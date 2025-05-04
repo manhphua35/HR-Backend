@@ -2,6 +2,7 @@ import { AppDataSource } from '../config/data-source';
 import { PerformancePlan, PlanStatus } from '../entities/performance/PerformancePlan';
 import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
 import { User } from '../entities/core/User';
+import { Department } from '../entities/core/Department'; // Import Department
 import { Between, In } from 'typeorm';
 
 interface CreatePlanData {
@@ -192,6 +193,50 @@ class PerformanceService {
             });
         } catch (error) {
             throw error;
+        }
+    }
+
+    public async getOverallDepartmentPerformance(): Promise<any[]> { // Return type might need adjustment based on desired output
+        try {
+            // Fetch all approved reviews with employee and department info
+            const reviews = await this.reviewRepository.find({
+                where: { status: ReviewStatus.APPROVED },
+                relations: ['employee', 'employee.department', 'plan'], // Include department relation
+                order: { reviewDate: 'DESC' } // Order by date only for now
+            });
+
+            // Group or process data as needed. For now, return raw reviews with department info.
+            // Example processing: Group by department
+            const performanceByDepartment: { [key: string]: any[] } = {};
+            reviews.forEach(review => {
+                const deptName = review.employee?.department?.name || 'Unknown Department';
+                if (!performanceByDepartment[deptName]) {
+                    performanceByDepartment[deptName] = [];
+                }
+                // Optionally simplify the returned review object
+                performanceByDepartment[deptName].push({
+                    reviewId: review.id,
+                    employeeName: review.employee?.fullName, // Use fullName
+                    planTitle: review.plan?.title,
+                    reviewDate: review.reviewDate,
+                    totalScore: review.totalScore,
+                    // Add other relevant fields
+                });
+            });
+
+            // Return the grouped data or the raw list depending on requirements
+            // Returning grouped data for this example:
+             return Object.entries(performanceByDepartment).map(([department, reviews]) => ({
+                 department,
+                 reviews
+             }));
+
+            // Or return the raw list:
+            // return reviews;
+
+        } catch (error) {
+            console.error('Error fetching overall department performance:', error);
+            throw error; // Re-throw the error to be caught by the controller
         }
     }
 }

@@ -18,6 +18,7 @@ import { PerformanceReview } from "../entities/performance/PerformanceReview";
 import { PerformancePlan } from "../entities/performance/PerformancePlan";
 import { Notification } from "../entities/notification/Notification";
 import { UserNotification } from "../entities/notification/UserNotification";
+import { Attendance } from "../entities/attendance/Attendance"; // Import Attendance
 
 export const AppDataSource = new DataSource({
     type: "postgres",
@@ -27,7 +28,7 @@ export const AppDataSource = new DataSource({
     password: process.env.DB_PASSWORD || "postgres",
     database: process.env.DB_NAME || "EmployeeDatabase",
     synchronize: true,
-    logging: true,
+    logging: false,
     entities: [
         User,
         Department,
@@ -47,7 +48,8 @@ export const AppDataSource = new DataSource({
         PerformanceReview,
         PerformancePlan,
         Notification,
-        UserNotification
+        UserNotification,
+        Attendance // Add Attendance here
     ],
     subscribers: [],
     migrations: [],

@@ -9,6 +9,7 @@ import payrollRoutes from './PayrollRoutes';
 import trainingRoutes from './TrainingRoutes';
 import profileRoutes from './ProfileRoutes';
 import reportRoutes from './ReportRoutes';
+import attendanceRoutes from './AttendanceRoutes'; // Import attendance routes
 
 const router = Router();
 
@@ -23,5 +24,6 @@ router.use('/payroll', payrollRoutes);
 router.use('/training', trainingRoutes);
 router.use('/profile', profileRoutes);
 router.use('/reports', reportRoutes);
+router.use('/attendances', attendanceRoutes); // Mount attendance routes
 
 export default router;

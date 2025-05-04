@@ -36,4 +36,12 @@ router.get(
     (req, res) => performanceController.getDepartmentReviews(req, res)
 );
 
+// Get overall department performance - Only Admin and HR Staff can access
+router.get(
+    '/overall',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => performanceController.getOverallDepartmentPerformance(req, res)
+);
+
 export default router;

@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
 import { User } from "./User";
+import { Position } from "./Position"; // Import Position
 
 @Entity("departments")
 export class Department {
@@ -14,4 +15,8 @@ export class Department {
 
   @OneToMany(() => User, user => user.department)
   users: User[];
+
+  // Add the relationship to Position
+  @OneToMany(() => Position, position => position.department)
+  positions: Position[];
 }

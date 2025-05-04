@@ -197,6 +197,25 @@ class PerformanceController {
             });
         }
     }
+public async getOverallDepartmentPerformance(req: Request, res: Response): Promise<void> {
+        try {
+            // Logic to fetch overall performance data will be in the service
+            // For now, assume performanceService.getOverallDepartmentPerformance exists
+            const overallPerformance = await performanceService.getOverallDepartmentPerformance();
+
+            res.status(200).json({
+                success: true,
+                data: overallPerformance
+            });
+
+        } catch (error) {
+            console.error('Error getting overall department performance:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
 }
 
 export const performanceController = PerformanceController.getInstance();
