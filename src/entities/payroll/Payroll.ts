@@ -30,7 +30,7 @@ export class Payroll {
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;
 
-  @ManyToOne(() => User, user => user.payrolls)
+  @ManyToOne(() => User)
   @JoinColumn({ name: "user_id" })
   user: User;
 }

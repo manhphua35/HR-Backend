@@ -9,7 +9,7 @@ const router = Router();
 router.post(
     '/calculate',
     authenticateToken,
-    checkRole([RoleType.HR_STAFF]),
+    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
     (req, res) => payrollController.calculateMonthlyPayroll(req, res)
 );
 
@@ -17,7 +17,7 @@ router.post(
 router.post(
     '/components',
     authenticateToken,
-    checkRole([RoleType.HR_STAFF]),
+    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
     (req, res) => payrollController.addPayrollComponent(req, res)
 );
 
@@ -25,7 +25,7 @@ router.post(
 router.put(
     '/components/:id',
     authenticateToken,
-    checkRole([RoleType.HR_STAFF]),
+    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
     (req, res) => payrollController.updatePayrollComponent(req, res)
 );
 
@@ -33,7 +33,7 @@ router.put(
 router.delete(
     '/components/:id',
     authenticateToken,
-    checkRole([RoleType.HR_STAFF]),
+    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
     (req, res) => payrollController.deletePayrollComponent(req, res)
 );
 
@@ -56,7 +56,7 @@ router.get(
 router.put(
     '/finalize/:id',
     authenticateToken,
-    checkRole([RoleType.HR_STAFF]),
+    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
     (req, res) => payrollController.finalizeMonthlyPayroll(req, res)
 );
 

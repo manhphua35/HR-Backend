@@ -35,11 +35,27 @@ router.get(
     (req, res) => leaveController.getUserLeaves(req, res)
 );
 
+// Get all leave requests - Only SYSTEM_ADMIN and HR_STAFF can access
+router.get(
+    '/all',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => leaveController.getAllLeaves(req, res)
+);
+
 // Get leave request by ID - Owner and HR_STAFF can access
 router.get(
-    '/:id',
+    '/:id', // This route with a parameter should come after specific routes like /all, /pending, /my-leaves
     authenticateToken,
     (req, res) => leaveController.getLeaveById(req, res)
+);
+
+// Delete leave request - SYSTEM_ADMIN, HR_STAFF, and DEPARTMENT_HEAD can access
+router.delete(
+    '/:id',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF, RoleType.DEPARTMENT_HEAD]),
+    (req, res) => leaveController.deleteLeave(req, res)
 );
 
 export default router;

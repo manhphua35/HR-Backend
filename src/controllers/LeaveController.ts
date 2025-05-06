@@ -240,6 +240,105 @@ class LeaveController {
             });
         }
     }
+
+    public async getAllLeaves(req: Request, res: Response): Promise<void> {
+        try {
+            if (!req.user) {
+                res.status(401).json({
+                    success: false,
+                    message: 'Authentication required'
+                });
+                return;
+            }
+
+            // Check if user has permission
+            if (![RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF].includes(req.user.roleType)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Only system administrators and HR staff can view all leave requests'
+                });
+                return;
+            }
+
+            // Get filter parameters from query
+            const {
+                startDate,
+                endDate,
+                status,
+                type
+            } = req.query;
+
+            const leaves = await leaveService.getAllLeaves({
+                startDate: startDate as string,
+                endDate: endDate as string,
+                status: status as LeaveStatus,
+                type: type as LeaveType
+            });
+
+            res.status(200).json({
+                success: true,
+                data: leaves
+            });
+
+        } catch (error) {
+            console.error('Error getting all leaves:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+
+    public async deleteLeave(req: Request, res: Response): Promise<void> {
+        try {
+            const leaveId = parseInt(req.params.id);
+            
+            // Check if leave exists
+            const leave = await leaveService.getLeaveById(leaveId);
+            if (!leave) {
+                res.status(404).json({
+                    success: false,
+                    message: 'Leave request not found'
+                });
+                return;
+            }
+
+            // Check if user has permission to delete this leave
+            const hasPermission = req.user?.roleType === RoleType.SYSTEM_ADMIN ||
+                                req.user?.roleType === RoleType.HR_STAFF ||
+                                (req.user?.roleType === RoleType.DEPARTMENT_HEAD &&
+                                 req.user?.departmentId === leave.user.departmentId);
+
+            if (!hasPermission) {
+                res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to delete this leave request'
+                });
+                return;
+            }
+
+            const result = await leaveService.deleteLeave(leaveId);
+
+            if (result) {
+                res.status(200).json({
+                    success: true,
+                    message: 'Leave request deleted successfully'
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to delete leave request'
+                });
+            }
+
+        } catch (error) {
+            console.error('Error deleting leave:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
 }
 
 export const leaveController = LeaveController.getInstance();

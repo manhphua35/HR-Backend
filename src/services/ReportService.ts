@@ -223,7 +223,7 @@ class ReportService {
                     ongoingTrainings: deptTrainings.length,
                     averagePerformance: deptReviews.length > 0
                         ? deptReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / deptReviews.length
-                        : 0,
+                        : 100,
                     totalSalary: deptPayroll.reduce((sum, p) =>
                         sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction), 0
                     ),
@@ -243,7 +243,7 @@ class ReportService {
                 ),
                 averagePerformance: performanceReviews.length > 0
                     ? performanceReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / performanceReviews.length
-                    : 0
+                    : 100
             },
             departmentStats,
             leaveStats: {

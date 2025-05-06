@@ -216,6 +216,96 @@ public async getOverallDepartmentPerformance(req: Request, res: Response): Promi
             });
         }
     }
+
+    public async deletePlan(req: Request, res: Response): Promise<void> {
+        try {
+            // Verify user is department manager or HR staff or system admin
+            const allowedRoles = [RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN];
+            if (!allowedRoles.includes(req.user?.roleType!)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to delete performance plans'
+                });
+                return;
+            }
+
+            const planId = parseInt(req.params.id);
+            const result = await performanceService.deletePlan(planId);
+
+            if (result) {
+                res.status(200).json({
+                    success: true,
+                    message: 'Performance plan deleted successfully'
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to delete performance plan'
+                });
+            }
+
+        } catch (error: any) {
+            console.error('Error deleting performance plan:', error);
+
+            if (error.message === 'Performance plan not found') {
+                res.status(404).json({
+                    success: false,
+                    message: error.message
+                });
+                return;
+            }
+
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+
+    public async deleteReview(req: Request, res: Response): Promise<void> {
+        try {
+            // Verify user is department manager or HR staff or system admin
+            const allowedRoles = [RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN];
+            if (!allowedRoles.includes(req.user?.roleType!)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to delete performance reviews'
+                });
+                return;
+            }
+
+            const reviewId = parseInt(req.params.id);
+            const result = await performanceService.deleteReview(reviewId);
+
+            if (result) {
+                res.status(200).json({
+                    success: true,
+                    message: 'Performance review deleted successfully'
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to delete performance review'
+                });
+            }
+
+        } catch (error: any) {
+            console.error('Error deleting performance review:', error);
+
+            if (error.message === 'Performance review not found') {
+                res.status(404).json({
+                    success: false,
+                    message: error.message
+                });
+                return;
+            }
+
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
 }
 
 export const performanceController = PerformanceController.getInstance();

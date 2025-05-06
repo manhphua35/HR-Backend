@@ -18,6 +18,13 @@ interface UpdateLeaveStatusData {
     rejectionReason?: string;
 }
 
+interface GetAllLeavesFilter {
+    startDate?: string;
+    endDate?: string;
+    status?: LeaveStatus;
+    type?: LeaveType;
+}
+
 class LeaveService {
     private static instance: LeaveService;
     private leaveRepository = AppDataSource.getRepository(Leave);
@@ -166,10 +173,59 @@ class LeaveService {
 
     public async getLeaveById(id: number): Promise<Leave | null> {
         try {
+            // Check if the provided ID is a valid number
+            if (isNaN(id) || !Number.isInteger(id)) {
+                console.error(`Invalid ID passed to getLeaveById: ${id}`);
+                return null; // Return null if ID is not a valid integer
+            }
             return await this.leaveRepository.findOne({
                 where: { id },
                 relations: ['user', 'approver']
             });
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    public async getAllLeaves(filters: GetAllLeavesFilter): Promise<Leave[]> {
+        try {
+            const query = this.leaveRepository.createQueryBuilder('leave')
+                .leftJoinAndSelect('leave.user', 'user')
+                .leftJoinAndSelect('leave.approver', 'approver')
+                .orderBy('leave.createdAt', 'DESC');
+
+            if (filters.startDate && filters.endDate) {
+                query.andWhere(
+                    '(leave.startDate BETWEEN :startDate AND :endDate OR leave.endDate BETWEEN :startDate AND :endDate)',
+                    { startDate: filters.startDate, endDate: filters.endDate }
+                );
+            }
+
+            if (filters.status) {
+                query.andWhere('leave.status = :status', { status: filters.status });
+            }
+
+            if (filters.type) {
+                query.andWhere('leave.type = :type', { type: filters.type });
+            }
+
+            return await query.getMany();
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    public async deleteLeave(id: number): Promise<boolean> {
+        try {
+            // Check if the leave exists
+            const leave = await this.getLeaveById(id);
+            if (!leave) {
+                throw new Error('Leave request not found');
+            }
+
+            // Delete the leave
+            const result = await this.leaveRepository.delete(id);
+            return result.affected === 1;
         } catch (error) {
             throw error;
         }

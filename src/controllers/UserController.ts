@@ -127,6 +127,7 @@ class UserController {
     }
 
     public async updateUser(req: Request, res: Response): Promise<void> {
+        console.log(req.body)
         try {
             const userId = parseInt(req.params.id);
             const userData = {

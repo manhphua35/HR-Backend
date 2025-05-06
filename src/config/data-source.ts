@@ -6,6 +6,7 @@ import { Role } from "../entities/auth/Role";
 import { Permission } from "../entities/auth/Permission";
 import { RolePermission } from "../entities/auth/RolePermission";
 import { Leave } from "../entities/leave/Leave";
+import { Payroll } from "../entities/payroll/Payroll";
 import { PayrollComponent } from "../entities/payroll/PayrollComponent";
 import { MonthlyPayroll } from "../entities/payroll/MonthlyPayroll";
 import { TrainingCourse } from "../entities/training/TrainingCourse";
@@ -37,6 +38,7 @@ export const AppDataSource = new DataSource({
         Permission,
         RolePermission,
         Leave,
+        Payroll,
         PayrollComponent,
         MonthlyPayroll,
         TrainingCourse,

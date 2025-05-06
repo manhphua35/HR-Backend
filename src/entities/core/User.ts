@@ -5,6 +5,7 @@ import { Role } from "../auth/Role";
 import { Leave } from "../leave/Leave";
 import { PayrollComponent } from "../payroll/PayrollComponent";
 import { MonthlyPayroll } from "../payroll/MonthlyPayroll";
+import { Payroll } from "../payroll/Payroll";
 import { PerformanceReview } from "../performance/PerformanceReview";
 
 @Entity("users")
@@ -80,4 +81,7 @@ export class User {
 
     @OneToMany(() => PerformanceReview, review => review.reviewer)
     reviewedPerformances!: PerformanceReview[];
+
+    @OneToMany(() => Payroll, payroll => payroll.user)
+    payrolls!: Payroll[];
 }

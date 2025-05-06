@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { userService } from '../services/UserService';
 import { tokenService } from '../services/TokenService';
 import { RolePermission } from '../entities/auth/RolePermission';
+import { RoleType } from '../entities/auth/Role';
 import bcrypt from 'bcrypt';
 
 class AuthController {
@@ -132,6 +133,27 @@ class AuthController {
             });
         } catch (error) {
             console.error('Error during logout:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+    public async getRoles(_req: Request, res: Response): Promise<void> {
+        try {
+            const roles = [
+                { type: RoleType.SYSTEM_ADMIN, name: "System Administrator" },
+                { type: RoleType.HR_STAFF, name: "HR Staff" },
+                { type: RoleType.DEPARTMENT_HEAD, name: "Department Head" },
+                { type: RoleType.EMPLOYEE, name: "Employee" }
+            ];
+            
+            res.status(200).json({
+                success: true,
+                data: roles
+            });
+        } catch (error) {
+            console.error('Error getting roles:', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'

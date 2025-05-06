@@ -44,4 +44,20 @@ router.get(
     (req, res) => performanceController.getOverallDepartmentPerformance(req, res)
 );
 
+// Delete performance plan - Only department managers, HR staff and system admin can access
+router.delete(
+    '/plans/:id',
+    authenticateToken,
+    checkRole([RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
+    (req, res) => performanceController.deletePlan(req, res)
+);
+
+// Delete performance review - Only department managers, HR staff and system admin can access
+router.delete(
+    '/reviews/:id',
+    authenticateToken,
+    checkRole([RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
+    (req, res) => performanceController.deleteReview(req, res)
+);
+
 export default router;

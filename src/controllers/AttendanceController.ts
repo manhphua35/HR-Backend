@@ -26,7 +26,6 @@ export class AttendanceController {
 
     // Lấy danh sách chấm công (có phân quyền)
     async getAttendances(req: Request, res: Response): Promise<void> {
-        console.log('getAttendances', req);
         try {
             // Lấy thông tin user từ request (đã được thêm vào bởi authMiddleware)
             const requestingUser = req.user as AuthenticatedUser; // Sử dụng kiểu đã định nghĩa

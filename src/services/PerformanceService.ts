@@ -239,6 +239,34 @@ class PerformanceService {
             throw error; // Re-throw the error to be caught by the controller
         }
     }
+
+    public async deletePlan(id: number): Promise<boolean> {
+        try {
+            const plan = await this.planRepository.findOneBy({ id });
+            if (!plan) {
+                throw new Error('Performance plan not found');
+            }
+
+            const result = await this.planRepository.delete(id);
+            return result.affected === 1;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    public async deleteReview(id: number): Promise<boolean> {
+        try {
+            const review = await this.reviewRepository.findOneBy({ id });
+            if (!review) {
+                throw new Error('Performance review not found');
+            }
+
+            const result = await this.reviewRepository.delete(id);
+            return result.affected === 1;
+        } catch (error) {
+            throw error;
+        }
+    }
 }
 
 export const performanceService = PerformanceService.getInstance();

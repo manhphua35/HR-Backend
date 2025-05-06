@@ -128,7 +128,17 @@ class PayrollService {
         }
     }
 
-    // Lấy danh sách thành phần lương theo loại
+    /**
+     * Lấy danh sách thành phần lương theo loại (phụ cấp/khấu trừ)
+     * @param type Loại thành phần lương:
+     * - ALLOWANCE: Các khoản phụ cấp (ăn trưa, đi lại, ...)
+     * - DEDUCTION: Các khoản khấu trừ (BHXH, BHYT, ...)
+     * - BENEFIT: Các khoản phúc lợi (bảo hiểm sức khỏe, ...)
+     * @returns Danh sách thành phần lương của loại được chọn
+     * Ví dụ:
+     * - ALLOWANCE sẽ trả về [{ name: "Phụ cấp ăn trưa", amount: 1000000 }, ...]
+     * - DEDUCTION sẽ trả về [{ name: "BHXH", amount: "8% lương cơ bản" }, ...]
+     */
     async getPayrollComponentsByType(type: ComponentType): Promise<PayrollComponent[]> {
         try {
             return await this.payrollComponentRepo.find({
@@ -140,22 +150,59 @@ class PayrollService {
         }
     }
 
-    // Lấy chi tiết bảng lương tháng
+    // Lấy danh sách lương theo tháng hoặc theo phòng ban
+    async getMonthlyPayrolls(month: number, year: number, departmentId?: number): Promise<MonthlyPayroll[]> {
+        try {
+            const query = this.monthlyPayrollRepo
+                .createQueryBuilder("monthlyPayroll")
+                .leftJoinAndSelect("monthlyPayroll.user", "user")
+                .leftJoin("user.position", "position")
+                .leftJoin("user.department", "department")
+                .addSelect([
+                    "user.fullName",
+                    "user.baseSalary",
+                    "position.title",
+                    "department.name"
+                ])
+                .where("monthlyPayroll.month = :month", { month })
+                .andWhere("monthlyPayroll.year = :year", { year });
+
+            if (departmentId) {
+                query.andWhere("user.departmentId = :departmentId", { departmentId });
+            }
+
+            return await query
+                .orderBy("department.name", "ASC")
+                .addOrderBy("user.fullName", "ASC")
+                .getMany();
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // Lấy chi tiết bảng lương của một nhân viên
     async getMonthlyPayrollDetail(userId: number, month: number, year: number): Promise<MonthlyPayroll> {
         try {
-            const payroll = await this.monthlyPayrollRepo.findOne({
-                where: {
-                    user: { id: userId },
-                    month,
-                    year
-                },
-                relations: { user: true }
-            });
+            console.log(`Searching payroll for user ${userId} in ${month}/${year}`);
             
+            const query = this.monthlyPayrollRepo
+                .createQueryBuilder("monthlyPayroll")
+                .innerJoinAndSelect("monthlyPayroll.user", "user")
+                .leftJoinAndSelect("user.position", "position")
+                .leftJoinAndSelect("user.department", "department")
+                .where("user.id = :userId", { userId })
+                .andWhere("monthlyPayroll.month = :month", { month })
+                .andWhere("monthlyPayroll.year = :year", { year });
+
+            const payroll = await query.getOne();
+            
+            console.log('Query:', query.getQueryAndParameters());
+            console.log('Result:', payroll);
+
             if (!payroll) {
                 throw new Error("Monthly payroll not found");
             }
-            
+
             return payroll;
         } catch (error) {
             throw error;
@@ -172,6 +219,56 @@ class PayrollService {
 
             payroll.isFinalized = true;
             await this.monthlyPayrollRepo.save(payroll);
+        } catch (error) {
+            throw error;
+        }
+    }
+    // Tính tổng lương theo phòng ban trong khoảng thời gian
+    async calculateDepartmentPayroll(
+        departmentId: number,
+        startMonth: number,
+        startYear: number,
+        endMonth: number,
+        endYear: number
+    ): Promise<{
+        totalBaseSalary: number;
+        totalAllowance: number;
+        totalDeduction: number;
+        totalBenefit: number;
+        totalNetSalary: number;
+        employeeCount: number;
+    }> {
+        try {
+            const result = await this.monthlyPayrollRepo
+                .createQueryBuilder("monthlyPayroll")
+                .leftJoin("monthlyPayroll.user", "user")
+                .where("user.departmentId = :departmentId", { departmentId })
+                .andWhere(
+                    "DATE_TRUNC('month', MAKE_DATE(monthlyPayroll.year, monthlyPayroll.month, 1)) BETWEEN :startDate AND :endDate",
+                    {
+                        startDate: `${startYear}-${startMonth}-01`,
+                        endDate: `${endYear}-${endMonth}-01`
+                    }
+                )
+                .andWhere("monthlyPayroll.isFinalized = :isFinalized", { isFinalized: true })
+                .select([
+                    "SUM(monthlyPayroll.baseSalary) as totalBaseSalary",
+                    "SUM(monthlyPayroll.totalAllowance) as totalAllowance",
+                    "SUM(monthlyPayroll.totalDeduction) as totalDeduction",
+                    "SUM(monthlyPayroll.totalBenefit) as totalBenefit",
+                    "SUM(monthlyPayroll.netSalary) as totalNetSalary",
+                    "COUNT(DISTINCT monthlyPayroll.userId) as employeeCount"
+                ])
+                .getRawOne();
+
+            return {
+                totalBaseSalary: Number(result.totalBaseSalary) || 0,
+                totalAllowance: Number(result.totalAllowance) || 0,
+                totalDeduction: Number(result.totalDeduction) || 0,
+                totalBenefit: Number(result.totalBenefit) || 0,
+                totalNetSalary: Number(result.totalNetSalary) || 0,
+                employeeCount: Number(result.employeeCount) || 0
+            };
         } catch (error) {
             throw error;
         }

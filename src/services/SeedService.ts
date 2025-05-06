@@ -3,13 +3,17 @@ import { AppDataSource } from '../config/data-source';
 import { Permission } from '../entities/auth/Permission';
 import { Role, RoleType } from '../entities/auth/Role';
 import { User } from '../entities/core/User';
-import { Department } from '../entities/core/Department'; // Import Department
-import { Position } from '../entities/core/Position';   // Import Position
-import { Leave, LeaveStatus, LeaveType } from '../entities/leave/Leave'; // Import Leave, LeaveStatus, LeaveType
-import { DepartmentReport } from '../entities/report/DepartmentReport'; // Import DepartmentReport
-import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance'; // Import Attendance
+import { Department } from '../entities/core/Department';
+import { Position } from '../entities/core/Position';
+import { Leave, LeaveStatus, LeaveType } from '../entities/leave/Leave';
+import { DepartmentReport } from '../entities/report/DepartmentReport';
+import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance';
+import { PayrollComponent, ComponentType } from '../entities/payroll/PayrollComponent';
+import { MonthlyPayroll } from '../entities/payroll/MonthlyPayroll';
+import { PerformancePlan, PlanStatus } from '../entities/performance/PerformancePlan';
+import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
 import bcrypt from 'bcrypt';
-import { FindOneOptions, LessThanOrEqual, MoreThanOrEqual } from 'typeorm'; // Import FindOneOptions and operators
+import { FindOneOptions, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
 export class SeedService {
     private static userRepository = AppDataSource.getRepository(User);
@@ -19,7 +23,9 @@ export class SeedService {
     private static positionRepository = AppDataSource.getRepository(Position);
     private static leaveRepository = AppDataSource.getRepository(Leave);
     private static reportRepository = AppDataSource.getRepository(DepartmentReport);
-    private static attendanceRepository = AppDataSource.getRepository(Attendance); // Add Attendance repository
+    private static attendanceRepository = AppDataSource.getRepository(Attendance);
+    private static performancePlanRepository = AppDataSource.getRepository(PerformancePlan);
+    private static performanceReviewRepository = AppDataSource.getRepository(PerformanceReview);
 
     // Helper to hash password
     private static async hashPassword(password: string): Promise<string> {
@@ -103,6 +109,14 @@ export class SeedService {
             // 6. Seed Attendances
             await this.seedAttendances(users);
 
+            // 7. Seed Payroll Components
+            await this.seedPayrollComponents(users);
+
+            // 8. Seed Monthly Payrolls
+            await this.seedMonthlyPayrolls(users);
+
+            // 9. Seed Performance Plans and Reviews
+            await this.seedPerformance(users, departments);
 
             console.log("Data seeding completed successfully.");
 
@@ -616,8 +630,269 @@ export class SeedService {
                 console.log(`${newAttendanceData.length} attendance records seeded successfully`);
             } else {
                  console.log('All seeded attendance records already exist or conflict.');
+           }
+       }
+   }
+
+    static async seedPerformance(users: User[], departments: Department[]) {
+        // Filter department heads and employees
+        const departmentHeads = users.filter(u => u.role.roleType === RoleType.DEPARTMENT_HEAD);
+        const employees = users.filter(u => u.role.roleType === RoleType.EMPLOYEE);
+
+        if (departmentHeads.length === 0 || employees.length === 0) {
+            console.log("No department heads or employees found to seed performance data for.");
+            return;
+        }
+
+        const plans: DeepPartial<PerformancePlan>[] = [];
+        const currentYear = new Date().getFullYear();
+
+        // Create performance plans for each department
+        for (const head of departmentHeads) {
+            const dept = departments.find(d => d.id === head.departmentId);
+            if (dept) {
+                const plan = {
+                    title: `Đánh giá hiệu suất ${dept.name} ${currentYear}`,
+                    description: `Kế hoạch đánh giá hiệu suất nhân viên ${dept.name} năm ${currentYear}`,
+                    startDate: new Date(currentYear, 0, 1), // Jan 1st
+                    endDate: new Date(currentYear, 11, 31), // Dec 31st
+                    department: dept,
+                    departmentId: dept.id,
+                    createdBy: head.id,
+                    creator: head,
+                    status: PlanStatus.ACTIVE,
+                    criteria: [
+                        {
+                            id: 1,
+                            name: "Chất lượng công việc",
+                            weight: 0.3,
+                            description: "Đánh giá chất lượng và độ chính xác của công việc"
+                        },
+                        {
+                            id: 2,
+                            name: "Hiệu suất làm việc",
+                            weight: 0.3,
+                            description: "Đánh giá số lượng công việc hoàn thành và thời gian"
+                        },
+                        {
+                            id: 3,
+                            name: "Tinh thần làm việc",
+                            weight: 0.2,
+                            description: "Đánh giá thái độ và tinh thần làm việc"
+                        },
+                        {
+                            id: 4,
+                            name: "Kỹ năng mềm",
+                            weight: 0.2,
+                            description: "Đánh giá khả năng giao tiếp và làm việc nhóm"
+                        }
+                    ]
+                };
+                plans.push(plan);
             }
+        }
+
+        // Save performance plans
+        const savedPlans = await this.performancePlanRepository.save(plans);
+        console.log(`${savedPlans.length} performance plans seeded successfully`);
+
+        // Create performance reviews
+        const reviews: DeepPartial<PerformanceReview>[] = [];
+
+        for (const plan of savedPlans) {
+            // Get employees of this department
+            const deptEmployees = employees.filter(e => e.departmentId === plan.departmentId);
+            const head = departmentHeads.find(h => h.departmentId === plan.departmentId);
+
+            if (head && deptEmployees.length > 0) {
+                for (const employee of deptEmployees) {
+                    const scores = plan.criteria.map(c => ({
+                        criteriaId: c.id,
+                        score: parseFloat((Math.random() * (5 - 3) + 3).toFixed(1)), // Random score between 3-5
+                        comment: "Hoàn thành tốt nhiệm vụ được giao"
+                    }));
+
+                    const totalScore = parseFloat((scores.reduce((sum, s) => {
+                        const criteria = plan.criteria.find(c => c.id === s.criteriaId);
+                        return sum + (s.score * (criteria?.weight || 0));
+                    }, 0)).toFixed(2));
+
+                    const review = {
+                        plan: plan,
+                        planId: plan.id,
+                        employee: employee,
+                        employeeId: employee.id,
+                        reviewer: head,
+                        reviewerId: head.id,
+                        status: ReviewStatus.APPROVED,
+                        scores: scores,
+                        totalScore: totalScore,
+                        comments: "Nhân viên có tinh thần làm việc tốt, hoàn thành công việc đúng tiến độ",
+                        improvement: "Cần cải thiện kỹ năng quản lý thời gian",
+                        strengths: "Có tinh thần trách nhiệm cao, kỹ năng chuyên môn tốt",
+                        weaknesses: "Đôi khi chưa linh hoạt trong xử lý tình huống",
+                        reviewDate: new Date()
+                    };
+                    reviews.push(review);
+                }
+            }
+        }
+
+        // Save performance reviews
+        if (reviews.length > 0) {
+            await this.performanceReviewRepository.save(reviews);
+            console.log(`${reviews.length} performance reviews seeded successfully`);
         }
     }
 
+    static async seedMonthlyPayrolls(users: User[]) {
+        // Get repository for MonthlyPayroll
+        const monthlyPayrollRepository = AppDataSource.getRepository(MonthlyPayroll);
+        const payrollComponentRepository = AppDataSource.getRepository(PayrollComponent);
+
+        const employees = users.filter(u => u.role.roleType === RoleType.EMPLOYEE);
+        if (employees.length === 0) {
+            console.log("No employees found to seed monthly payrolls for.");
+            return;
+        }
+
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth() + 1; // JavaScript months are 0-based
+
+        const monthlyPayrollData: DeepPartial<MonthlyPayroll>[] = [];
+
+        // Create payrolls for the last 3 months
+        for (const employee of employees) {
+            // Get employee's payroll components
+            const components = await payrollComponentRepository.find({
+                where: { user: { id: employee.id } }
+            });
+
+            // Calculate totals from components
+            const totalAllowance = components
+                .filter(c => c.type === ComponentType.ALLOWANCE)
+                .reduce((sum, c) => sum + Number(c.amount), 0);
+
+            const totalDeduction = components
+                .filter(c => c.type === ComponentType.DEDUCTION)
+                .reduce((sum, c) => sum + Number(c.amount), 0);
+
+            const totalBenefit = components
+                .filter(c => c.type === ComponentType.BENEFIT)
+                .reduce((sum, c) => sum + Number(c.amount), 0);
+
+            // Generate payroll for last 3 months
+            const months = [
+                { month: 5, year: currentYear }, // Tháng 5
+                { month: 4, year: currentYear }, // Tháng 4
+                { month: 3, year: currentYear }  // Tháng 3
+            ];
+
+            for (const { month, year } of months) {
+                // Nếu là tháng 5 thì tạo nhiều bản ghi hơn
+                const recordCount = month === 5 ? 10 : 1;
+                
+                for (let i = 0; i < recordCount; i++) {
+                    const baseSalary = employee.baseSalary;
+                    // Thêm biến động cho mỗi bản ghi
+                    const variation = month === 5 ? (Math.random() * 1000000 - 500000) : 0;
+                    const adjustedAllowance = totalAllowance + variation;
+
+                    const netSalary = baseSalary + adjustedAllowance + totalBenefit - totalDeduction;
+
+                    const payrollNote = recordCount === 1
+                        ? `Lương tháng ${month}/${year}`
+                        : `Lương tháng ${month}/${year} - Đợt ${i + 1}`;
+
+                    monthlyPayrollData.push({
+                        user: employee,
+                        month: month,
+                        year: year,
+                        baseSalary: baseSalary,
+                        totalAllowance: adjustedAllowance,
+                        totalDeduction: totalDeduction,
+                        totalBenefit: totalBenefit,
+                        netSalary: netSalary,
+                        note: payrollNote,
+                        isFinalized: month !== currentMonth // Chỉ tháng hiện tại là chưa finalize
+                    });
+                }
+            }
+        }
+
+        if (monthlyPayrollData.length > 0) {
+            await monthlyPayrollRepository.save(monthlyPayrollData);
+            console.log(`${monthlyPayrollData.length} monthly payrolls seeded successfully`);
+        }
+    }
+
+    static async seedPayrollComponents(users: User[]) {
+        // Get repository for PayrollComponent
+        const payrollComponentRepository = AppDataSource.getRepository(PayrollComponent);
+
+        // Get all regular employees
+        const employees = users.filter(u => u.role.roleType === RoleType.EMPLOYEE);
+        if (employees.length === 0) {
+            console.log("No employees found to seed payroll components for.");
+            return;
+        }
+
+        const payrollData: DeepPartial<PayrollComponent>[] = [];
+
+        // Seed payroll components for each employee
+        for (const employee of employees) {
+            // Phụ cấp (Allowances)
+            payrollData.push(
+                {
+                    user: employee,
+                    name: "Phụ cấp ăn trưa",
+                    amount: 1000000,
+                    type: ComponentType.ALLOWANCE,
+                    description: "Phụ cấp ăn trưa hàng tháng"
+                },
+                {
+                    user: employee,
+                    name: "Phụ cấp đi lại",
+                    amount: 500000,
+                    type: ComponentType.ALLOWANCE,
+                    description: "Phụ cấp đi lại hàng tháng"
+                }
+            );
+
+            // Khấu trừ (Deductions)
+            payrollData.push(
+                {
+                    user: employee,
+                    name: "Bảo hiểm xã hội",
+                    amount: employee.baseSalary * 0.08,
+                    type: ComponentType.DEDUCTION,
+                    description: "Khấu trừ BHXH (8% lương cơ bản)"
+                },
+                {
+                    user: employee,
+                    name: "Bảo hiểm y tế",
+                    amount: employee.baseSalary * 0.015,
+                    type: ComponentType.DEDUCTION,
+                    description: "Khấu trừ BHYT (1.5% lương cơ bản)"
+                }
+            );
+
+            // Phúc lợi (Benefits)
+            payrollData.push(
+                {
+                    user: employee,
+                    name: "Bảo hiểm sức khỏe",
+                    amount: 2000000,
+                    type: ComponentType.BENEFIT,
+                    description: "Bảo hiểm sức khỏe cao cấp"
+                }
+            );
+        }
+
+        if (payrollData.length > 0) {
+            await payrollComponentRepository.save(payrollData);
+            console.log(`${payrollData.length} payroll components seeded successfully`);
+        }
+    }
 }
