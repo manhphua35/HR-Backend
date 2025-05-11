@@ -5,6 +5,22 @@ import { RoleType } from '../entities/auth/Role';
 
 const router = Router();
 
+// Tạo báo cáo cho toàn công ty - Chỉ HR_STAFF và SYSTEM_ADMIN có quyền
+router.post(
+    '/company',
+    authenticateToken,
+    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
+    (req, res) => reportController.generateCompanyReport(req, res)
+);
+
+// Lấy báo cáo toàn công ty - Chỉ HR_STAFF và SYSTEM_ADMIN có quyền
+router.get(
+    '/company',
+    authenticateToken,
+    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
+    (req, res) => reportController.getCompanyReports(req, res)
+);
+
 // Tạo báo cáo phòng ban - Chỉ HR_STAFF và SYSTEM_ADMIN có quyền
 router.post(
     '/departments',

@@ -38,6 +38,9 @@ export class User {
     @Column({ name: "hire_date", type: "date" })
     hireDate!: Date;
 
+    @Column({ name: "resignation_date", type: "date", nullable: true })
+    resignationDate!: Date;
+
     @Column({ name: "remaining_leaves", default: 0 })
     remainingLeaves!: number;
 

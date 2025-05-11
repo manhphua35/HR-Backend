@@ -13,18 +13,64 @@ class ReportController {
         return ReportController.instance;
     }
 
+    // Tạo báo cáo cho toàn công ty
+    async generateCompanyReport(req: Request, res: Response) {
+        try {
+            const { startDate, endDate } = req.body;
+            
+            if (!startDate || !endDate) {
+                return res.status(400).json({ success: false, message: "Start date and end date are required" });
+            }
+
+            const report = await reportService.generateCompanyReport(
+                new Date(startDate),
+                new Date(endDate)
+            );
+            res.status(201).json({ success: true, data: report });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+    
+    // Lấy báo cáo toàn công ty theo khoảng thời gian
+    async getCompanyReports(req: Request, res: Response) {
+        try {
+            const { startDate, endDate } = req.query;
+            
+            if (!startDate || !endDate) {
+                return res.status(400).json({ success: false, message: "Start date and end date are required" });
+            }
+
+            // Sử dụng hàm getDepartmentReports cho toàn công ty sẽ tốt nhất
+            // vì báo cáo công ty là tập hợp báo cáo các phòng ban
+            const reports = await reportService.getDepartmentReports(
+                null, // không filter theo departmentId
+                new Date(startDate as string),
+                new Date(endDate as string)
+            );
+            res.status(200).json({ success: true, data: reports });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
     // Tạo báo cáo phòng ban
     async generateDepartmentReport(req: Request, res: Response) {
         try {
-            const { departmentId, month, year } = req.body;
+            const { departmentId, startDate, endDate } = req.body;
+            
+            if (!departmentId || !startDate || !endDate) {
+                return res.status(400).json({ success: false, message: "Department ID, start date and end date are required" });
+            }
+
             const report = await reportService.generateDepartmentReport(
                 parseInt(departmentId),
-                parseInt(month),
-                parseInt(year)
+                new Date(startDate),
+                new Date(endDate)
             );
-            res.status(201).json(report);
+            res.status(201).json({ success: true, data: report });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({ success: false, message: error.message });
         }
     }
 
@@ -35,7 +81,7 @@ class ReportController {
             const { startDate, endDate } = req.query;
             
             if (!startDate || !endDate) {
-                return res.status(400).json({ message: "Start date and end date are required" });
+                return res.status(400).json({ success: false, message: "Start date and end date are required" });
             }
 
             const reports = await reportService.getDepartmentReports(
@@ -43,9 +89,9 @@ class ReportController {
                 new Date(startDate as string),
                 new Date(endDate as string)
             );
-            res.status(200).json(reports);
+            res.status(200).json({ success: true, data: reports });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({ success: false, message: error.message });
         }
     }
 
@@ -55,16 +101,16 @@ class ReportController {
             const { month, year } = req.query;
             
             if (!month || !year) {
-                return res.status(400).json({ message: "Month and year are required" });
+                return res.status(400).json({ success: false, message: "Month and year are required" });
             }
 
             const statistics = await reportService.getHRCostStatistics(
                 parseInt(month as string),
                 parseInt(year as string)
             );
-            res.status(200).json(statistics);
+            res.status(200).json({ success: true, data: statistics });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({ success: false, message: error.message });
         }
     }
 
@@ -74,16 +120,16 @@ class ReportController {
             const { month, year } = req.query;
             
             if (!month || !year) {
-                return res.status(400).json({ message: "Month and year are required" });
+                return res.status(400).json({ success: false, message: "Month and year are required" });
             }
 
             const data = await reportService.getDashboardData(
                 parseInt(month as string),
                 parseInt(year as string)
             );
-            res.status(200).json(data);
+            res.status(200).json({ success: true, data: data });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({ success: false, message: error.message });
         }
     }
 }

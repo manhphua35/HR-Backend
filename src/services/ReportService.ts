@@ -27,11 +27,25 @@ class ReportService {
         return ReportService.instance;
     }
 
-    // Tạo báo cáo phòng ban theo tháng
-    async generateDepartmentReport(departmentId: number, month: number, year: number): Promise<DepartmentReport> {
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0);
+    // Tạo báo cáo cho toàn công ty
+    async generateCompanyReport(startDate: Date, endDate: Date): Promise<DepartmentReport[]> {
+        const departments = await this.departmentRepo.find();
+        const reports: DepartmentReport[] = [];
 
+        for (const dept of departments) {
+            try {
+                const report = await this.generateDepartmentReport(dept.id, startDate, endDate);
+                reports.push(report);
+            } catch (error) {
+                console.error(`Error generating report for department ${dept.id}:`, error);
+            }
+        }
+
+        return reports;
+    }
+
+    // Tạo báo cáo phòng ban
+    async generateDepartmentReport(departmentId: number, startDate: Date, endDate: Date): Promise<DepartmentReport> {
         // Lấy thông tin phòng ban
         const department = await this.departmentRepo.findOneBy({ id: departmentId });
         if (!department) {
@@ -51,6 +65,14 @@ class ReportService {
             }
         });
 
+        // Đếm nhân viên nghỉ việc
+        const resignedEmployees = await this.userRepo.count({
+            where: {
+                departmentId,
+                resignationDate: Between(startDate, endDate)
+            }
+        });
+
         // Tính tổng ngày nghỉ
         const leaves = await this.leaveRepo.find({
             where: {
@@ -67,8 +89,8 @@ class ReportService {
         const payrolls = await this.payrollRepo.find({
             where: {
                 user: { departmentId },
-                month,
-                year
+                month: startDate.getMonth() + 1,
+                year: startDate.getFullYear()
             }
         });
         const totalSalary = payrolls.reduce((sum, p) => sum + Number(p.baseSalary), 0);
@@ -82,7 +104,7 @@ class ReportService {
                 completionDate: Between(startDate, endDate)
             }
         });
-        const totalTrainingHours = trainings.length * 8; // Giả sử mỗi khóa đào tạo 8 tiếng
+        const totalTrainingHours = trainings.length * 8;
 
         // Tính điểm đánh giá trung bình
         const reviews = await this.performanceRepo.find({
@@ -92,7 +114,7 @@ class ReportService {
             }
         });
         const averageRating = reviews.length > 0
-            ? reviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / reviews.length
+            ? Number((reviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / reviews.length).toFixed(2))
             : 0;
 
         // Tạo báo cáo mới
@@ -101,6 +123,7 @@ class ReportService {
         report.reportDate = endDate;
         report.totalEmployees = totalEmployees;
         report.newEmployees = newEmployees;
+        report.resignedEmployees = resignedEmployees;
         report.totalLeaves = totalLeaves;
         report.totalSalary = totalSalary;
         report.totalAllowances = totalAllowances;
@@ -112,7 +135,18 @@ class ReportService {
     }
 
     // Lấy báo cáo theo khoảng thời gian
-    async getDepartmentReports(departmentId: number, startDate: Date, endDate: Date): Promise<DepartmentReport[]> {
+    async getDepartmentReports(departmentId: number | null, startDate: Date, endDate: Date): Promise<DepartmentReport[]> {
+        // Nếu không có departmentId (null), lấy tất cả báo cáo phòng ban trong khoảng thời gian
+        if (departmentId === null) {
+            return await this.reportRepo.find({
+                where: {
+                    reportDate: Between(startDate, endDate)
+                },
+                order: { reportDate: 'DESC' }
+            });
+        }
+        
+        // Nếu có departmentId, lấy báo cáo của phòng ban cụ thể
         return await this.reportRepo.find({
             where: {
                 departmentId,
