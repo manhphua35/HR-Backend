@@ -11,8 +11,6 @@ import { PerformancePlan } from "../entities/performance/PerformancePlan";
 import { Notification } from "../entities/notification/Notification";
 import { UserNotification } from "../entities/notification/UserNotification";
 import { Attendance } from "../entities/attendance/Attendance";
-import { PayrollComponent } from "../entities/payroll/PayrollComponent";
-import { MonthlyPayroll } from "../entities/payroll/MonthlyPayroll";
 import { DepartmentReport } from "../entities/report/DepartmentReport";
 import { TrainingCourse } from "../entities/training/TrainingCourse";
 import { TrainingParticipant } from "../entities/training/TrainingParticipant";
@@ -41,8 +39,6 @@ const tempDataSource = new DataSource({
         Position,
         Leave,
         Payroll,
-        PayrollComponent,
-        MonthlyPayroll,
         PerformanceReview,
         PerformancePlan,
         Notification,

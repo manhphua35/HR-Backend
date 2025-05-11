@@ -5,59 +5,49 @@ import { RoleType } from '../entities/auth/Role';
 
 const router = Router();
 
-// Tính lương tháng cho nhân viên - Chỉ HR_STAFF có quyền
+// API xử lý tính lương hàng loạt
 router.post(
-    '/calculate',
+    '/process-batch',
     authenticateToken,
-    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
-    (req, res) => payrollController.calculateMonthlyPayroll(req, res)
+    checkRole([
+        RoleType.SYSTEM_ADMIN,
+        RoleType.HR_STAFF,
+        RoleType.DEPARTMENT_HEAD
+    ]),
+    (req, res) => payrollController.handleProcessBatchPayroll(req, res)
 );
 
-// Thêm thành phần lương mới - Chỉ HR_STAFF có quyền
-router.post(
-    '/components',
-    authenticateToken,
-    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
-    (req, res) => payrollController.addPayrollComponent(req, res)
-);
-
-// Cập nhật thành phần lương - Chỉ HR_STAFF có quyền
-router.put(
-    '/components/:id',
-    authenticateToken,
-    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
-    (req, res) => payrollController.updatePayrollComponent(req, res)
-);
-
-// Xóa thành phần lương - Chỉ HR_STAFF có quyền
-router.delete(
-    '/components/:id',
-    authenticateToken,
-    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
-    (req, res) => payrollController.deletePayrollComponent(req, res)
-);
-
-// Lấy danh sách thành phần lương theo loại - HR_STAFF và SYSTEM_ADMIN có quyền
+// Lấy chi tiết bảng lương của nhân viên
 router.get(
-    '/components/:type',
+    '/detail/:userId/:month/:year',
     authenticateToken,
-    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
-    (req, res) => payrollController.getPayrollComponentsByType(req, res)
+    (req, res) => payrollController.getPayrollDetail(req, res)
 );
 
-// Lấy chi tiết bảng lương tháng - HR_STAFF và chủ sở hữu có quyền
-router.get(
-    '/monthly/:userId/:month/:year',
-    authenticateToken,
-    (req, res) => payrollController.getMonthlyPayrollDetail(req, res)
-);
-
-// Hoàn tất bảng lương tháng - Chỉ HR_STAFF có quyền
+// Hoàn tất bảng lương - Chỉ SYSTEM_ADMIN, HR_STAFF có quyền
 router.put(
     '/finalize/:id',
     authenticateToken,
-    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
-    (req, res) => payrollController.finalizeMonthlyPayroll(req, res)
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => payrollController.finalizePayroll(req, res)
 );
+
+// Cập nhật bảng lương (thêm bonus, allowance, benefit)
+router.put(
+    '/update/:id',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => payrollController.updatePayroll(req, res)
+);
+
+// Thiết lập ngày thanh toán
+router.put(
+    '/payment-date/:id',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => payrollController.setPaymentDate(req, res)
+);
+
+// Các route liên quan đến /components và /calculate (cũ) đã được loại bỏ.
 
 export default router;

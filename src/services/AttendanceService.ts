@@ -454,4 +454,79 @@ export class AttendanceService {
         await this.attendanceRepository.save(attendance);
     }
 
+    // Get attendance history by day (e.g. last 7 days, 14 days, 30 days)
+    async getAttendanceHistoryByDay(
+        requestingUser: AuthenticatedUser,
+        days: number = 30,
+        userId?: string,
+        departmentId?: string
+    ): Promise<Attendance[]> {
+        // Tính ngày bắt đầu dựa trên số ngày cần lấy lịch sử
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+
+        // Sử dụng phương thức getAttendances có sẵn với phân quyền
+        return this.getAttendances(
+            requestingUser,
+            userId,
+            departmentId,
+            startDateStr,
+            endDateStr
+        );
+    }
+
+    // Get attendance history by month
+    async getAttendanceHistoryByMonth(
+        requestingUser: AuthenticatedUser,
+        year: number,
+        month: number,
+        userId?: string,
+        departmentId?: string
+    ): Promise<Attendance[]> {
+        // Tính ngày đầu và cuối tháng
+        // Lưu ý: month trong JavaScript bắt đầu từ 0 (0 = tháng 1)
+        // Nhưng tham số đầu vào month bắt đầu từ 1 (1 = tháng 1)
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0); // Ngày 0 của tháng tiếp theo = ngày cuối của tháng hiện tại
+
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+
+        // Lấy tất cả bản ghi trong tháng, sắp xếp theo ngày
+        const attendances = await this.getAttendances(
+            requestingUser,
+            userId,
+            departmentId,
+            startDateStr,
+            endDateStr
+        );
+
+        // Sắp xếp lại theo ngày để dễ hiển thị theo lịch
+        return attendances.sort((a, b) => {
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            return dateA - dateB;
+        });
+    }
+
+    // Get attendance by specific date
+    async getAttendanceBySpecificDate(
+        requestingUser: AuthenticatedUser,
+        date: string,
+        userId?: string,
+        departmentId?: string
+    ): Promise<Attendance[]> {
+        // Sử dụng phương thức getAttendances có sẵn với phân quyền
+        return this.getAttendances(
+            requestingUser,
+            userId,
+            departmentId,
+            date, // Sử dụng ngày cụ thể làm cả startDate và endDate
+            date
+        );
+    }
 }

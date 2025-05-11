@@ -8,8 +8,7 @@ import { Position } from '../entities/core/Position';
 import { Leave, LeaveStatus, LeaveType } from '../entities/leave/Leave';
 import { DepartmentReport } from '../entities/report/DepartmentReport';
 import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance';
-import { PayrollComponent, ComponentType } from '../entities/payroll/PayrollComponent';
-import { MonthlyPayroll } from '../entities/payroll/MonthlyPayroll';
+import { Payroll, ComponentType } from '../entities/payroll/Payroll';
 import { PerformancePlan, PlanStatus } from '../entities/performance/PerformancePlan';
 import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
 import bcrypt from 'bcrypt';
@@ -24,6 +23,7 @@ export class SeedService {
     private static leaveRepository = AppDataSource.getRepository(Leave);
     private static reportRepository = AppDataSource.getRepository(DepartmentReport);
     private static attendanceRepository = AppDataSource.getRepository(Attendance);
+    private static payrollRepository = AppDataSource.getRepository(Payroll);
     private static performancePlanRepository = AppDataSource.getRepository(PerformancePlan);
     private static performanceReviewRepository = AppDataSource.getRepository(PerformanceReview);
 
@@ -109,13 +109,10 @@ export class SeedService {
             // 6. Seed Attendances
             await this.seedAttendances(users);
 
-            // 7. Seed Payroll Components
-            await this.seedPayrollComponents(users);
+            // 7. Seed Payrolls
+            await this.seedPayrolls(users);
 
-            // 8. Seed Monthly Payrolls
-            await this.seedMonthlyPayrolls(users);
-
-            // 9. Seed Performance Plans and Reviews
+            // 8. Seed Performance Plans and Reviews
             await this.seedPerformance(users, departments);
 
             console.log("Data seeding completed successfully.");
@@ -745,14 +742,13 @@ export class SeedService {
         }
     }
 
-    static async seedMonthlyPayrolls(users: User[]) {
-        // Get repository for MonthlyPayroll
-        const monthlyPayrollRepository = AppDataSource.getRepository(MonthlyPayroll);
-        const payrollComponentRepository = AppDataSource.getRepository(PayrollComponent);
+    static async seedPayrolls(users: User[]) {
+        // Get repository for Payroll
+        const payrollRepository = this.payrollRepository;
 
         const employees = users.filter(u => u.role.roleType === RoleType.EMPLOYEE);
         if (employees.length === 0) {
-            console.log("No employees found to seed monthly payrolls for.");
+            console.log("No employees found to seed payrolls for.");
             return;
         }
 
@@ -760,27 +756,15 @@ export class SeedService {
         const currentYear = currentDate.getFullYear();
         const currentMonth = currentDate.getMonth() + 1; // JavaScript months are 0-based
 
-        const monthlyPayrollData: DeepPartial<MonthlyPayroll>[] = [];
+        const payrollData: DeepPartial<Payroll>[] = [];
 
         // Create payrolls for the last 3 months
         for (const employee of employees) {
-            // Get employee's payroll components
-            const components = await payrollComponentRepository.find({
-                where: { user: { id: employee.id } }
-            });
-
-            // Calculate totals from components
-            const totalAllowance = components
-                .filter(c => c.type === ComponentType.ALLOWANCE)
-                .reduce((sum, c) => sum + Number(c.amount), 0);
-
-            const totalDeduction = components
-                .filter(c => c.type === ComponentType.DEDUCTION)
-                .reduce((sum, c) => sum + Number(c.amount), 0);
-
-            const totalBenefit = components
-                .filter(c => c.type === ComponentType.BENEFIT)
-                .reduce((sum, c) => sum + Number(c.amount), 0);
+            // Tạo các giá trị cơ bản cho mỗi nhân viên
+            const baseSalary = employee.baseSalary;
+            const totalAllowance = 1500000;  // Tổng phụ cấp (phụ cấp ăn trưa + đi lại)
+            const totalBenefit = 2000000;    // Phúc lợi (bảo hiểm sức khỏe)
+            const totalDeduction = baseSalary * 0.095;  // Khấu trừ (BHXH 8% + BHYT 1.5%)
 
             // Generate payroll for last 3 months
             const months = [
@@ -794,26 +778,51 @@ export class SeedService {
                 const recordCount = month === 5 ? 10 : 1;
                 
                 for (let i = 0; i < recordCount; i++) {
-                    const baseSalary = employee.baseSalary;
                     // Thêm biến động cho mỗi bản ghi
                     const variation = month === 5 ? (Math.random() * 1000000 - 500000) : 0;
                     const adjustedAllowance = totalAllowance + variation;
+                    
+                    // Tính toán các giá trị khấu trừ
+                    const leaveDeductionAmount = Math.floor(Math.random() * 3) * 0.03 * baseSalary; // 0-2 ngày nghỉ
+                    const latePenaltyAmount = Math.floor(Math.random() * 3) * 100000; // 0-2 lần đi muộn
+                    
+                    // Tính tiền thưởng (bonus)
+                    const bonus = month === currentMonth ? 0 : Math.floor(Math.random() * 5) * 500000; // 0-2.5 triệu
+                    
+                    // Tính thu nhập trước thuế
+                    const incomeBeforeTax = baseSalary + adjustedAllowance + totalBenefit - totalDeduction - leaveDeductionAmount - latePenaltyAmount + bonus;
+                    
+                    // Tính thuế (10% thu nhập trước thuế)
+                    const tax = incomeBeforeTax * 0.1;
+                    
+                    // Tính lương thực nhận
+                    const netSalary = incomeBeforeTax - tax;
 
-                    const netSalary = baseSalary + adjustedAllowance + totalBenefit - totalDeduction;
-
+                    // Tạo ghi chú
                     const payrollNote = recordCount === 1
-                        ? `Lương tháng ${month}/${year}`
-                        : `Lương tháng ${month}/${year} - Đợt ${i + 1}`;
+                        ? `Lương tháng ${month}/${year} - ${employee.fullName}`
+                        : `Lương tháng ${month}/${year} - Đợt ${i + 1} - ${employee.fullName}`;
 
-                    monthlyPayrollData.push({
+                    // Thiết lập ngày thanh toán (null nếu chưa thanh toán)
+                    const paymentDate = month !== currentMonth ? 
+                        new Date(year, month, 10) : // Ngày 10 của tháng sau
+                        undefined; // Dùng undefined thay vì null để phù hợp với DeepPartial
+
+                    payrollData.push({
                         user: employee,
+                        userId: employee.id,
                         month: month,
                         year: year,
                         baseSalary: baseSalary,
                         totalAllowance: adjustedAllowance,
-                        totalDeduction: totalDeduction,
+                        totalDeduction: totalDeduction + leaveDeductionAmount + latePenaltyAmount,
                         totalBenefit: totalBenefit,
+                        leaveDeductionAmount: leaveDeductionAmount,
+                        latePenaltyAmount: latePenaltyAmount,
+                        bonus: bonus,
+                        tax: tax,
                         netSalary: netSalary,
+                        paymentDate: paymentDate,
                         note: payrollNote,
                         isFinalized: month !== currentMonth // Chỉ tháng hiện tại là chưa finalize
                     });
@@ -821,78 +830,9 @@ export class SeedService {
             }
         }
 
-        if (monthlyPayrollData.length > 0) {
-            await monthlyPayrollRepository.save(monthlyPayrollData);
-            console.log(`${monthlyPayrollData.length} monthly payrolls seeded successfully`);
-        }
-    }
-
-    static async seedPayrollComponents(users: User[]) {
-        // Get repository for PayrollComponent
-        const payrollComponentRepository = AppDataSource.getRepository(PayrollComponent);
-
-        // Get all regular employees
-        const employees = users.filter(u => u.role.roleType === RoleType.EMPLOYEE);
-        if (employees.length === 0) {
-            console.log("No employees found to seed payroll components for.");
-            return;
-        }
-
-        const payrollData: DeepPartial<PayrollComponent>[] = [];
-
-        // Seed payroll components for each employee
-        for (const employee of employees) {
-            // Phụ cấp (Allowances)
-            payrollData.push(
-                {
-                    user: employee,
-                    name: "Phụ cấp ăn trưa",
-                    amount: 1000000,
-                    type: ComponentType.ALLOWANCE,
-                    description: "Phụ cấp ăn trưa hàng tháng"
-                },
-                {
-                    user: employee,
-                    name: "Phụ cấp đi lại",
-                    amount: 500000,
-                    type: ComponentType.ALLOWANCE,
-                    description: "Phụ cấp đi lại hàng tháng"
-                }
-            );
-
-            // Khấu trừ (Deductions)
-            payrollData.push(
-                {
-                    user: employee,
-                    name: "Bảo hiểm xã hội",
-                    amount: employee.baseSalary * 0.08,
-                    type: ComponentType.DEDUCTION,
-                    description: "Khấu trừ BHXH (8% lương cơ bản)"
-                },
-                {
-                    user: employee,
-                    name: "Bảo hiểm y tế",
-                    amount: employee.baseSalary * 0.015,
-                    type: ComponentType.DEDUCTION,
-                    description: "Khấu trừ BHYT (1.5% lương cơ bản)"
-                }
-            );
-
-            // Phúc lợi (Benefits)
-            payrollData.push(
-                {
-                    user: employee,
-                    name: "Bảo hiểm sức khỏe",
-                    amount: 2000000,
-                    type: ComponentType.BENEFIT,
-                    description: "Bảo hiểm sức khỏe cao cấp"
-                }
-            );
-        }
-
         if (payrollData.length > 0) {
-            await payrollComponentRepository.save(payrollData);
-            console.log(`${payrollData.length} payroll components seeded successfully`);
+            await payrollRepository.save(payrollData);
+            console.log(`${payrollData.length} payrolls seeded successfully`);
         }
     }
 }

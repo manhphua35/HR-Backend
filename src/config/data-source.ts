@@ -7,8 +7,6 @@ import { Permission } from "../entities/auth/Permission";
 import { RolePermission } from "../entities/auth/RolePermission";
 import { Leave } from "../entities/leave/Leave";
 import { Payroll } from "../entities/payroll/Payroll";
-import { PayrollComponent } from "../entities/payroll/PayrollComponent";
-import { MonthlyPayroll } from "../entities/payroll/MonthlyPayroll";
 import { TrainingCourse } from "../entities/training/TrainingCourse";
 import { TrainingParticipant } from "../entities/training/TrainingParticipant";
 import { TrainingResult } from "../entities/training/TrainingResult";
@@ -19,7 +17,7 @@ import { PerformanceReview } from "../entities/performance/PerformanceReview";
 import { PerformancePlan } from "../entities/performance/PerformancePlan";
 import { Notification } from "../entities/notification/Notification";
 import { UserNotification } from "../entities/notification/UserNotification";
-import { Attendance } from "../entities/attendance/Attendance"; // Import Attendance
+import { Attendance } from "../entities/attendance/Attendance";
 
 export const AppDataSource = new DataSource({
     type: "postgres",
@@ -39,8 +37,6 @@ export const AppDataSource = new DataSource({
         RolePermission,
         Leave,
         Payroll,
-        PayrollComponent,
-        MonthlyPayroll,
         TrainingCourse,
         TrainingParticipant,
         TrainingResult,
@@ -51,7 +47,7 @@ export const AppDataSource = new DataSource({
         PerformancePlan,
         Notification,
         UserNotification,
-        Attendance // Add Attendance here
+        Attendance
     ],
     subscribers: [],
     migrations: [],

@@ -10,8 +10,6 @@ import { Department } from "../entities/core/Department";
 import { Position } from "../entities/core/Position";
 import { Leave } from "../entities/leave/Leave";
 import { Payroll } from "../entities/payroll/Payroll";
-import { PayrollComponent } from "../entities/payroll/PayrollComponent";
-import { MonthlyPayroll } from "../entities/payroll/MonthlyPayroll";
 import { PerformanceReview } from "../entities/performance/PerformanceReview";
 import { PerformancePlan } from "../entities/performance/PerformancePlan";
 import { Notification } from "../entities/notification/Notification";

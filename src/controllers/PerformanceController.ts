@@ -16,16 +16,17 @@ class PerformanceController {
 
     public async createPlan(req: Request, res: Response): Promise<void> {
         try {
-            // Verify user is department manager
-            if (!req.user?.departmentId || req.user.roleType !== RoleType.DEPARTMENT_HEAD) {
+            // Verify user has permission (department manager, HR staff, or system admin)
+            const allowedRoles = [RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN];
+            if (!allowedRoles.includes(req.user?.roleType!)) {
                 res.status(403).json({
                     success: false,
-                    message: 'Only department managers can create performance plans'
+                    message: 'You do not have permission to create performance plans'
                 });
                 return;
             }
 
-            const { title, description, startDate, endDate, criteria } = req.body;
+            const { title, description, startDate, endDate, criteria, departmentId } = req.body;
 
             // Validate required fields
             if (!title || !description || !startDate || !endDate || !criteria) {
@@ -36,13 +37,30 @@ class PerformanceController {
                 return;
             }
 
+            // Determine which department ID to use:
+            // If user is department head, use their department
+            // If user is HR/Admin and departmentId is provided, use that
+            let planDepartmentId: number;
+
+            if (req.user?.roleType === RoleType.DEPARTMENT_HEAD) {
+                planDepartmentId = req.user.departmentId!;
+            } else if (departmentId) {
+                planDepartmentId = departmentId;
+            } else {
+                res.status(400).json({
+                    success: false,
+                    message: 'Department ID is required for HR staff and system admins'
+                });
+                return;
+            }
+
             const plan = await performanceService.createPlan({
                 title,
                 description,
                 startDate: new Date(startDate),
                 endDate: new Date(endDate),
-                departmentId: req.user.departmentId,
-                createdBy: req.user.userId,
+                departmentId: planDepartmentId,
+                createdBy: req.user!.userId,
                 criteria
             });
 
@@ -73,11 +91,12 @@ class PerformanceController {
 
     public async createReview(req: Request, res: Response): Promise<void> {
         try {
-            // Verify user is department manager
-            if (!req.user?.departmentId || req.user.roleType !== RoleType.DEPARTMENT_HEAD) {
+            // Verify user has permission (department manager, HR staff, or system admin)
+            const allowedRoles = [RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN];
+            if (!allowedRoles.includes(req.user?.roleType!)) {
                 res.status(403).json({
                     success: false,
-                    message: 'Only department managers can create performance reviews'
+                    message: 'You do not have permission to create performance reviews'
                 });
                 return;
             }
@@ -105,7 +124,7 @@ class PerformanceController {
             const review = await performanceService.createReview({
                 planId,
                 employeeId,
-                reviewerId: req.user.userId,
+                reviewerId: req.user!.userId,
                 reviewDate: new Date(reviewDate),
                 scores,
                 comments,
@@ -160,6 +179,47 @@ class PerformanceController {
 
         } catch (error) {
             console.error('Error getting department plans:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+
+    public async getAllDepartmentPlans(req: Request, res: Response): Promise<void> {
+        try {
+            // This endpoint is only accessible to HR staff and system admins (validated in routes)
+            const plans = await performanceService.getAllDepartmentPlans();
+
+            res.status(200).json({
+                success: true,
+                data: plans
+            });
+
+        } catch (error) {
+            console.error('Error getting all department plans:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+
+    public async getEmployeeReviews(req: Request, res: Response): Promise<void> {
+        try {
+            // Get the current user's ID
+            const employeeId = req.user!.userId;
+            
+            // Get reviews for this employee
+            const reviews = await performanceService.getEmployeeReviews(employeeId);
+
+            res.status(200).json({
+                success: true,
+                data: reviews
+            });
+
+        } catch (error) {
+            console.error('Error getting employee reviews:', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'

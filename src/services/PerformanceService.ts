@@ -41,6 +41,7 @@ class PerformanceService {
     private planRepository = AppDataSource.getRepository(PerformancePlan);
     private reviewRepository = AppDataSource.getRepository(PerformanceReview);
     private userRepository = AppDataSource.getRepository(User);
+    private departmentRepository = AppDataSource.getRepository(Department);
 
     public static getInstance(): PerformanceService {
         if (!PerformanceService.instance) {
@@ -140,6 +141,18 @@ class PerformanceService {
         try {
             return await this.planRepository.find({
                 where: { departmentId },
+                order: { createdAt: 'DESC' }
+            });
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    public async getAllDepartmentPlans(): Promise<PerformancePlan[]> {
+        try {
+            // Fetch plans from all departments with department information
+            return await this.planRepository.find({
+                relations: ['department', 'creator'],
                 order: { createdAt: 'DESC' }
             });
         } catch (error) {

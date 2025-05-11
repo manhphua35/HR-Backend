@@ -1,7 +1,7 @@
 import { AppDataSource } from '../config/data-source';
 import { Leave, LeaveStatus, LeaveType } from '../entities/leave/Leave';
 import { User } from '../entities/core/User';
-import { Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual, FindManyOptions } from 'typeorm';
 
 interface CreateLeaveData {
     userId: number;
@@ -23,6 +23,16 @@ interface GetAllLeavesFilter {
     endDate?: string;
     status?: LeaveStatus;
     type?: LeaveType;
+    userId?: number;
+    departmentId?: number;
+}
+
+// Định nghĩa kiểu cho user đã xác thực từ token (tương tự AttendanceService)
+interface AuthenticatedUser {
+    userId: number;
+    roleType: string;
+    permissions: string[];
+    departmentId?: number;
 }
 
 class LeaveService {
@@ -35,6 +45,159 @@ class LeaveService {
             LeaveService.instance = new LeaveService();
         }
         return LeaveService.instance;
+    }
+
+    // Helper function để kiểm tra quyền xem
+    private async checkViewPermission(requestingUser: AuthenticatedUser, targetUserId?: number, targetDepartmentId?: number): Promise<boolean> {
+        const { userId, roleType, departmentId: reqUserDeptId } = requestingUser;
+
+        // Admin và HR có thể xem tất cả
+        if (roleType === 'SYSTEM_ADMIN' || roleType === 'HR_STAFF') {
+            return true;
+        }
+
+        // Trưởng phòng chỉ xem được phòng mình
+        if (roleType === 'DEPARTMENT_HEAD') {
+            if (!reqUserDeptId) return false;
+
+            // Kiểm tra xem có đang xem phòng ban của mình không
+            if (targetDepartmentId && targetDepartmentId === reqUserDeptId) {
+                return true;
+            }
+
+            // Kiểm tra xem user có thuộc phòng ban của mình không
+            if (targetUserId) {
+                const targetUser = await this.userRepository.findOne({ 
+                    where: { id: targetUserId, department: { id: reqUserDeptId } } 
+                });
+                return !!targetUser;
+            }
+
+            // Cho phép xem chung nếu sau này sẽ lọc theo phòng ban
+            return !targetUserId && !targetDepartmentId;
+        }
+
+        // Nhân viên chỉ xem được đơn của mình
+        if (targetUserId && targetUserId === userId) {
+            return true;
+        }
+
+        // Cho phép xem của bản thân khi không có filter
+        if (!targetUserId && !targetDepartmentId) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // Phương thức để lấy tất cả leave với phân quyền
+    public async getLeaves(
+        requestingUser: AuthenticatedUser,
+        filters: GetAllLeavesFilter = {}
+    ): Promise<Leave[]> {
+        const { userId: requestingUserId, roleType, departmentId: reqUserDeptId } = requestingUser;
+        const { userId, departmentId, ...otherFilters } = filters;
+
+        const query = this.leaveRepository.createQueryBuilder('leave')
+            .leftJoinAndSelect('leave.user', 'user')
+            .leftJoinAndSelect('user.department', 'department')
+            .leftJoinAndSelect('leave.approver', 'approver')
+            .orderBy('leave.createdAt', 'DESC');
+
+        // Áp dụng các filter cơ bản
+        if (otherFilters.startDate && otherFilters.endDate) {
+            query.andWhere(
+                '(leave.startDate BETWEEN :startDate AND :endDate OR leave.endDate BETWEEN :startDate AND :endDate)',
+                { startDate: otherFilters.startDate, endDate: otherFilters.endDate }
+            );
+        }
+
+        if (otherFilters.status) {
+            query.andWhere('leave.status = :status', { status: otherFilters.status });
+        }
+
+        if (otherFilters.type) {
+            query.andWhere('leave.type = :type', { type: otherFilters.type });
+        }
+
+        // Áp dụng phân quyền
+        if (roleType === 'SYSTEM_ADMIN' || roleType === 'HR_STAFF') {
+            // Admin và HR xem được hết
+            if (userId) {
+                query.andWhere('user.id = :userId', { userId });
+            }
+            if (departmentId) {
+                query.andWhere('department.id = :departmentId', { departmentId });
+            }
+        } else if (roleType === 'DEPARTMENT_HEAD') {
+            // Trưởng phòng chỉ xem được phòng mình
+            if (!reqUserDeptId) {
+                return []; // Trưởng phòng phải thuộc một phòng ban
+            }
+            
+            query.andWhere('department.id = :departmentId', { departmentId: reqUserDeptId });
+            
+            if (userId) {
+                // Kiểm tra xem userId có thuộc phòng ban không
+                const userInDept = await this.userRepository.findOne({
+                    where: { id: userId, department: { id: reqUserDeptId } }
+                });
+                if (!userInDept) {
+                    return [];
+                }
+                query.andWhere('user.id = :userId', { userId });
+            }
+        } else {
+            // Nhân viên chỉ xem được đơn của mình
+            query.andWhere('user.id = :userId', { userId: requestingUserId });
+        }
+
+        return await query.getMany();
+    }
+
+    // Lấy đơn nghỉ phép theo ngày cụ thể
+    public async getLeavesBySpecificDate(
+        requestingUser: AuthenticatedUser,
+        date: string,
+        userId?: number,
+        departmentId?: number
+    ): Promise<Leave[]> {
+        return this.getLeaves(requestingUser, {
+            startDate: date,
+            endDate: date,
+            userId,
+            departmentId
+        });
+    }
+
+    // Lấy đơn nghỉ phép theo tháng
+    public async getLeavesByMonth(
+        requestingUser: AuthenticatedUser,
+        year: number,
+        month: number,
+        userId?: number,
+        departmentId?: number
+    ): Promise<Leave[]> {
+        // Tính ngày đầu và cuối tháng
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0);
+
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+
+        const leaves = await this.getLeaves(requestingUser, {
+            startDate: startDateStr,
+            endDate: endDateStr,
+            userId,
+            departmentId
+        });
+
+        // Sắp xếp theo ngày bắt đầu
+        return leaves.sort((a, b) => {
+            const dateA = new Date(a.startDate).getTime();
+            const dateB = new Date(b.startDate).getTime();
+            return dateA - dateB;
+        });
     }
 
     public async createLeave(data: CreateLeaveData): Promise<Leave> {

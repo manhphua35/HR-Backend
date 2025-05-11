@@ -3,6 +3,14 @@ import { leaveService } from '../services/LeaveService';
 import { LeaveStatus, LeaveType } from '../entities/leave/Leave';
 import { RoleType } from '../entities/auth/Role';
 
+// Định nghĩa kiểu cho req.user từ middleware
+interface AuthenticatedUser {
+    userId: number;
+    roleType: RoleType;
+    permissions: string[];
+    departmentId?: number;
+}
+
 class LeaveController {
     private static instance: LeaveController;
 
@@ -11,6 +19,122 @@ class LeaveController {
             LeaveController.instance = new LeaveController();
         }
         return LeaveController.instance;
+    }
+
+    // Lấy nghỉ phép theo ngày cụ thể
+    public async getLeavesBySpecificDate(req: Request, res: Response): Promise<void> {
+        try {
+            const requestingUser = req.user as AuthenticatedUser;
+            if (!requestingUser) {
+                res.status(401).json({
+                    success: false,
+                    message: 'Unauthorized'
+                });
+                return;
+            }
+
+            const { date, userId, departmentId } = req.query;
+            
+            // Kiểm tra tham số date
+            if (!date) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Date parameter is required'
+                });
+                return;
+            }
+
+            // Kiểm tra định dạng ngày (YYYY-MM-DD)
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(date as string)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Invalid date format. Use YYYY-MM-DD'
+                });
+                return;
+            }
+
+            const userIdNum = userId ? parseInt(userId as string) : undefined;
+            const departmentIdNum = departmentId ? parseInt(departmentId as string) : undefined;
+
+            const leaves = await leaveService.getLeavesBySpecificDate(
+                requestingUser,
+                date as string,
+                userIdNum,
+                departmentIdNum
+            );
+
+            res.status(200).json({
+                success: true,
+                data: leaves
+            });
+
+        } catch (error) {
+            console.error('Error getting leaves by specific date:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+
+    // Lấy nghỉ phép theo tháng
+    public async getLeavesByMonth(req: Request, res: Response): Promise<void> {
+        try {
+            const requestingUser = req.user as AuthenticatedUser;
+            if (!requestingUser) {
+                res.status(401).json({
+                    success: false,
+                    message: 'Unauthorized'
+                });
+                return;
+            }
+
+            const { year, month, userId, departmentId } = req.query;
+            
+            // Kiểm tra tham số year và month
+            if (!year || !month) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Year and month parameters are required'
+                });
+                return;
+            }
+
+            const yearNum = parseInt(year as string);
+            const monthNum = parseInt(month as string);
+
+            if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Invalid year or month'
+                });
+                return;
+            }
+
+            const userIdNum = userId ? parseInt(userId as string) : undefined;
+            const departmentIdNum = departmentId ? parseInt(departmentId as string) : undefined;
+
+            const leaves = await leaveService.getLeavesByMonth(
+                requestingUser,
+                yearNum,
+                monthNum,
+                userIdNum,
+                departmentIdNum
+            );
+
+            res.status(200).json({
+                success: true,
+                data: leaves
+            });
+
+        } catch (error) {
+            console.error('Error getting leaves by month:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
     }
 
     public async createLeave(req: Request, res: Response): Promise<void> {
@@ -92,7 +216,7 @@ class LeaveController {
     public async updateLeaveStatus(req: Request, res: Response): Promise<void> {
         try {
             // Check if user is HR staff
-            if (req.user?.roleType !== RoleType.HR_STAFF) {
+            if (req.user?.roleType !== RoleType.HR_STAFF && req.user?.roleType !== RoleType.SYSTEM_ADMIN) {
                 res.status(403).json({
                     success: false,
                     message: 'Only HR staff can approve/reject leave requests'

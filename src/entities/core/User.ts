@@ -3,8 +3,6 @@ import { Department } from "./Department";
 import { Position } from "./Position";
 import { Role } from "../auth/Role";
 import { Leave } from "../leave/Leave";
-import { PayrollComponent } from "../payroll/PayrollComponent";
-import { MonthlyPayroll } from "../payroll/MonthlyPayroll";
 import { Payroll } from "../payroll/Payroll";
 import { PerformanceReview } from "../performance/PerformanceReview";
 
@@ -69,12 +67,6 @@ export class User {
 
     @OneToMany(() => Leave, leave => leave.user)
     leaves!: Leave[];
-
-    @OneToMany(() => PayrollComponent, component => component.user)
-    payrollComponents!: PayrollComponent[];
-
-    @OneToMany(() => MonthlyPayroll, payroll => payroll.user)
-    monthlyPayrolls!: MonthlyPayroll[];
 
     @OneToMany(() => PerformanceReview, review => review.employee)
     performanceReviews!: PerformanceReview[];

@@ -192,4 +192,113 @@ export class AttendanceController {
             res.status(500).json({ message: 'Lỗi khi check-out', error: error.message });
         }
     }
+
+    // Endpoint cho lịch sử chấm công theo ngày (mặc định 30 ngày gần nhất)
+    async getAttendanceHistoryByDay(req: Request, res: Response): Promise<void> {
+        try {
+            const requestingUser = req.user as AuthenticatedUser;
+            if (!requestingUser) {
+                res.status(401).json({ message: 'Yêu cầu xác thực.' });
+                return;
+            }
+
+            const { days, userId, departmentId } = req.query;
+            
+            // Chuyển đổi days từ string sang number, mặc định là 30 ngày
+            const daysNum = days ? parseInt(days as string, 10) : 30;
+            if (isNaN(daysNum) || daysNum <= 0) {
+                res.status(400).json({ message: 'Tham số days không hợp lệ. Phải là số nguyên dương.' });
+                return;
+            }
+
+            const attendances = await this.attendanceService.getAttendanceHistoryByDay(
+                requestingUser,
+                daysNum,
+                userId as string | undefined,
+                departmentId as string | undefined
+            );
+
+            res.status(200).json(attendances);
+        } catch (error: any) {
+            res.status(500).json({ message: 'Lỗi khi lấy lịch sử chấm công theo ngày', error: error.message });
+        }
+    }
+
+    // Endpoint cho lịch sử chấm công theo tháng
+    async getAttendanceHistoryByMonth(req: Request, res: Response): Promise<void> {
+        try {
+            const requestingUser = req.user as AuthenticatedUser;
+            if (!requestingUser) {
+                res.status(401).json({ message: 'Yêu cầu xác thực.' });
+                return;
+            }
+
+            const { year, month, userId, departmentId } = req.query;
+            
+            // Kiểm tra và chuyển đổi tham số
+            if (!year || !month) {
+                res.status(400).json({ message: 'Thiếu tham số year hoặc month.' });
+                return;
+            }
+
+            const yearNum = parseInt(year as string, 10);
+            const monthNum = parseInt(month as string, 10);
+
+            if (isNaN(yearNum) || isNaN(monthNum) || 
+                monthNum < 1 || monthNum > 12 ||
+                yearNum < 2000 || yearNum > 2100) {
+                res.status(400).json({ message: 'Tham số year hoặc month không hợp lệ.' });
+                return;
+            }
+
+            const attendances = await this.attendanceService.getAttendanceHistoryByMonth(
+                requestingUser,
+                yearNum,
+                monthNum,
+                userId as string | undefined,
+                departmentId as string | undefined
+            );
+
+            res.status(200).json(attendances);
+        } catch (error: any) {
+            res.status(500).json({ message: 'Lỗi khi lấy lịch sử chấm công theo tháng', error: error.message });
+        }
+    }
+
+    // Endpoint cho lấy dữ liệu chấm công theo ngày cụ thể
+    async getAttendanceBySpecificDate(req: Request, res: Response): Promise<void> {
+        try {
+            const requestingUser = req.user as AuthenticatedUser;
+            if (!requestingUser) {
+                res.status(401).json({ message: 'Yêu cầu xác thực.' });
+                return;
+            }
+
+            const { date, userId, departmentId } = req.query;
+            
+            // Kiểm tra ngày
+            if (!date) {
+                res.status(400).json({ message: 'Ngày không được để trống.' });
+                return;
+            }
+
+            // Kiểm tra định dạng ngày (YYYY-MM-DD)
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(date as string)) {
+                res.status(400).json({ message: 'Định dạng ngày không hợp lệ. Phải là YYYY-MM-DD.' });
+                return;
+            }
+
+            const attendances = await this.attendanceService.getAttendanceBySpecificDate(
+                requestingUser,
+                date as string,
+                userId as string | undefined,
+                departmentId as string | undefined
+            );
+
+            res.status(200).json(attendances);
+        } catch (error: any) {
+            res.status(500).json({ message: 'Lỗi khi lấy dữ liệu chấm công theo ngày', error: error.message });
+        }
+    }
 }

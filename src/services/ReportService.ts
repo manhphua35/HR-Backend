@@ -2,7 +2,7 @@ import { AppDataSource } from '../config/data-source';
 import { DepartmentReport } from '../entities/report/DepartmentReport';
 import { Department } from '../entities/core/Department';
 import { User } from '../entities/core/User';
-import { MonthlyPayroll } from '../entities/payroll/MonthlyPayroll';
+import { Payroll } from '../entities/payroll/Payroll';
 import { Leave, LeaveStatus } from '../entities/leave/Leave';
 import { TrainingResult } from '../entities/training/TrainingResult';
 import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
@@ -12,7 +12,7 @@ class ReportService {
     private static instance: ReportService;
     private departmentRepo = AppDataSource.getRepository(Department);
     private userRepo = AppDataSource.getRepository(User);
-    private payrollRepo = AppDataSource.getRepository(MonthlyPayroll);
+    private payrollRepo = AppDataSource.getRepository(Payroll);
     private leaveRepo = AppDataSource.getRepository(Leave);
     private trainingRepo = AppDataSource.getRepository(TrainingResult);
     private performanceRepo = AppDataSource.getRepository(PerformanceReview);
@@ -137,7 +137,7 @@ class ReportService {
             });
 
             const totalCost = payrolls.reduce((sum, p) => 
-                sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction), 0
+                sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction) + Number(p.bonus), 0
             );
 
             results.push({
@@ -225,7 +225,7 @@ class ReportService {
                         ? deptReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / deptReviews.length
                         : 100,
                     totalSalary: deptPayroll.reduce((sum, p) =>
-                        sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction), 0
+                        sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction) + Number(p.bonus), 0
                     ),
                 };
             })
@@ -239,7 +239,7 @@ class ReportService {
                 activeLeaves: activeLeaves.length,
                 currentTrainings: currentTrainings.length,
                 totalSalary: totalPayroll.reduce((sum, p) =>
-                    sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction), 0
+                    sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction) + Number(p.bonus), 0
                 ),
                 averagePerformance: performanceReviews.length > 0
                     ? performanceReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / performanceReviews.length
@@ -248,30 +248,33 @@ class ReportService {
             departmentStats,
             leaveStats: {
                 total: activeLeaves.length,
-                byDepartment: departmentStats.map(d => ({
-                    department: d.departmentName,
-                    count: d.activeLeaves
+                details: activeLeaves.map(leave => ({
+                    id: leave.id,
+                    employeeName: leave.user.fullName,
+                    departmentName: departments.find(d => d.id === leave.user.departmentId)?.name || 'Unknown',
+                    startDate: leave.startDate,
+                    endDate: leave.endDate,
+                    reason: leave.reason
                 }))
             },
             trainingStats: {
                 total: currentTrainings.length,
-                byDepartment: departmentStats.map(d => ({
-                    department: d.departmentName,
-                    count: d.ongoingTrainings
+                details: currentTrainings.map(training => ({
+                    id: training.id,
+                    employeeName: training.user.fullName,
+                    departmentName: departments.find(d => d.id === training.user.departmentId)?.name || 'Unknown',
+                    courseName: training.courseId.toString(), // Lưu ý: Có thể cần join với bảng Training Course
+                    score: training.score,
+                    completionDate: training.completionDate
                 }))
             },
-            performanceStats: {
-                averageScore: departmentStats.reduce((sum, d) => sum + d.averagePerformance, 0) / departments.length,
-                byDepartment: departmentStats.map(d => ({
-                    department: d.departmentName,
-                    score: d.averagePerformance
-                }))
-            },
-            salaryStats: {
-                total: departmentStats.reduce((sum, d) => sum + d.totalSalary, 0),
-                byDepartment: departmentStats.map(d => ({
-                    department: d.departmentName,
-                    amount: d.totalSalary
+            payrollStats: {
+                total: totalPayroll.reduce((sum, p) => 
+                    sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction) + Number(p.bonus), 0
+                ),
+                departmentBreakdown: departmentStats.map(dept => ({
+                    departmentName: dept.departmentName,
+                    totalSalary: dept.totalSalary
                 }))
             }
         };

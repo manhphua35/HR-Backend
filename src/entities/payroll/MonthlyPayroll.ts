@@ -1,44 +1,50 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from "typeorm";
-import { User } from "../core/User";
+// import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from "typeorm";
+// import { User } from "../core/User";
 
-@Entity("monthly_payrolls")
-export class MonthlyPayroll {
-    @PrimaryGeneratedColumn()
-    id: number;
+// @Entity("monthly_payrolls")
+// export class MonthlyPayroll {
+//     @PrimaryGeneratedColumn()
+//     id: number;
 
-    @ManyToOne(() => User, user => user.id)
-    user: User;
+//     @ManyToOne(() => User, user => user.id)
+//     user: User;
 
-    @Column()
-    month: number;
+//     @Column()
+//     month: number;
 
-    @Column()
-    year: number;
+//     @Column()
+//     year: number;
 
-    @Column("decimal", { precision: 10, scale: 2 })
-    baseSalary: number;
+//     @Column("decimal", { precision: 10, scale: 2 })
+//     baseSalary: number;
 
-    @Column("decimal", { precision: 10, scale: 2 })
-    totalAllowance: number;
+//     @Column("decimal", { precision: 10, scale: 2 })
+//     totalAllowance: number;
 
-    @Column("decimal", { precision: 10, scale: 2 })
-    totalDeduction: number;
+//     @Column("decimal", { precision: 10, scale: 2 })
+//     totalDeduction: number;
 
-    @Column("decimal", { precision: 10, scale: 2 })
-    totalBenefit: number;
+//     @Column("decimal", { precision: 10, scale: 2 })
+//     totalBenefit: number;
 
-    @Column("decimal", { precision: 10, scale: 2 })
-    netSalary: number;
+//     @Column("decimal", { precision: 10, scale: 2 })
+//     netSalary: number;
 
-    @Column({ type: "text", nullable: true })
-    note: string;
+//     @Column("decimal", { precision: 10, scale: 2, nullable: true, default: 0 })
+//     leaveDeductionAmount: number;
 
-    @Column({ default: false })
-    isFinalized: boolean;
+//     @Column("decimal", { precision: 10, scale: 2, nullable: true, default: 0 })
+//     latePenaltyAmount: number;
 
-    @CreateDateColumn({ name: "created_at" })
-    createdAt: Date;
+//     @Column({ type: "text", nullable: true })
+//     note: string;
 
-    @UpdateDateColumn({ name: "updated_at" })
-    updatedAt: Date;
-}
+//     @Column({ default: false })
+//     isFinalized: boolean;
+
+//     @CreateDateColumn({ name: "created_at" })
+//     createdAt: Date;
+
+//     @UpdateDateColumn({ name: "updated_at" })
+//     updatedAt: Date;
+// }

@@ -5,11 +5,11 @@ import { RoleType } from '../entities/auth/Role';
 
 const router = Router();
 
-// Create performance plan - Only department managers can access
+// Create performance plan - Allow system admin, HR staff and department managers
 router.post(
     '/plans/create',
     authenticateToken,
-    checkRole([RoleType.DEPARTMENT_HEAD]),
+    checkRole([RoleType.DEPARTMENT_HEAD, RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
     (req, res) => performanceController.createPlan(req, res)
 );
 
@@ -20,11 +20,19 @@ router.get(
     (req, res) => performanceController.getDepartmentPlans(req, res)
 );
 
-// Create performance review - Only department managers can access
+// Get all department plans - Only system admin and HR staff can access
+router.get(
+    '/plans/all',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => performanceController.getAllDepartmentPlans(req, res)
+);
+
+// Create performance review - Allow system admin, HR staff and department managers
 router.post(
     '/reviews/create',
     authenticateToken,
-    checkRole([RoleType.DEPARTMENT_HEAD]),
+    checkRole([RoleType.DEPARTMENT_HEAD, RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
     (req, res) => performanceController.createReview(req, res)
 );
 
@@ -34,6 +42,13 @@ router.get(
     authenticateToken,
     checkRole([RoleType.DEPARTMENT_HEAD]),
     (req, res) => performanceController.getDepartmentReviews(req, res)
+);
+
+// Get employee reviews - For employees to view their own reviews
+router.get(
+    '/reviews/employee',
+    authenticateToken,
+    (req, res) => performanceController.getEmployeeReviews(req, res)
 );
 
 // Get overall department performance - Only Admin and HR Staff can access

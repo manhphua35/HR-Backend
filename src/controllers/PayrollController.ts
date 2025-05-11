@@ -1,9 +1,15 @@
 import { Request, Response } from 'express';
 import { payrollService } from '../services/PayrollService';
-import { ComponentType } from '../entities/payroll/PayrollComponent';
+// ComponentType có thể không cần thiết nữa nếu các hàm quản lý component bị xóa
+// import { ComponentType } from '../entities/payroll/PayrollComponent';
+import { User } from '../entities/core/User'; // Cần User để ép kiểu req.user
+import { AppDataSource } from '../config/data-source'; // Import AppDataSource
+import { RoleType } from '../entities/auth/Role'; // Giả sử RoleType được dùng trong token payload
+import { ComponentType } from '../entities/payroll/Payroll';
 
 class PayrollController {
     private static instance: PayrollController;
+    private userRepo = AppDataSource.getRepository(User); // Khởi tạo userRepo
 
     private constructor() {}
 
@@ -14,73 +20,55 @@ class PayrollController {
         return PayrollController.instance;
     }
 
-    // Tính lương tháng cho nhân viên
-    async calculateMonthlyPayroll(req: Request, res: Response) {
+    // API mới để xử lý tính lương hàng loạt
+    async handleProcessBatchPayroll(req: Request, res: Response) {
         try {
-            const { userId, month, year } = req.body;
-            const result = await payrollService.calculateMonthlyPayroll(userId, month, year);
-            res.status(200).json(result);
+            const { month, year } = req.body;
+            // req.user từ authMiddleware có thể có cấu trúc khác User entity đầy đủ
+            // Nó có vẻ chứa: { userId: number; roleType: RoleType; permissions: string[]; departmentId?: number; ... }
+            const tokenPayload = req.user as { userId: number; roleType: RoleType; departmentId?: number; permissions: string[] }; // Điều chỉnh theo cấu trúc thực tế từ lỗi
+
+            if (!tokenPayload || tokenPayload.userId === undefined) {
+                return res.status(401).json({ message: "User not authenticated or user ID not found in token." });
+            }
+
+            // Lấy thông tin User đầy đủ từ DB
+            const requestingUser = await this.userRepo.findOne({
+                where: { id: tokenPayload.userId },
+                relations: ["role", "department"] // Sửa từ "roles" thành "role" (số ít)
+            });
+
+            if (!requestingUser) {
+                return res.status(404).json({ message: "Authenticated user not found in database." });
+            }
+
+            if (month === undefined || year === undefined) {
+                return res.status(400).json({ message: "Month and year are required in the request body." });
+            }
+            // Kiểm tra month và year là số hợp lệ
+            const numMonth = Number(month);
+            const numYear = Number(year);
+
+            if (isNaN(numMonth) || numMonth < 1 || numMonth > 12) {
+                return res.status(400).json({ message: "Invalid month provided." });
+            }
+            if (isNaN(numYear) || numYear < 1900 || numYear > 2200) { // Giới hạn năm hợp lý
+                return res.status(400).json({ message: "Invalid year provided." });
+            }
+
+            const result = await payrollService.processBatchPayrollCalculation(requestingUser, numMonth, numYear);
+            res.status(200).json({ message: "Payroll calculation processed.", data: result });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            console.error("Error in handleProcessBatchPayroll:", error);
+            res.status(500).json({ message: error.message || "An unexpected error occurred during payroll processing." });
         }
     }
 
-    // Thêm thành phần lương mới
-    async addPayrollComponent(req: Request, res: Response) {
-        try {
-            const { name, amount, type, description, userId } = req.body;
-            const result = await payrollService.addPayrollComponent(name, amount, type as ComponentType, description, userId);
-            res.status(201).json(result);
-        } catch (error: any) {
-            res.status(500).json({ message: error.message });
-        }
-    }
-
-    // Cập nhật thành phần lương
-    async updatePayrollComponent(req: Request, res: Response) {
-        try {
-            const { id } = req.params;
-            const { name, amount, type, description } = req.body;
-            const result = await payrollService.updatePayrollComponent(
-                parseInt(id),
-                name,
-                amount,
-                type as ComponentType,
-                description
-            );
-            res.status(200).json(result);
-        } catch (error: any) {
-            res.status(500).json({ message: error.message });
-        }
-    }
-
-    // Xóa thành phần lương
-    async deletePayrollComponent(req: Request, res: Response) {
-        try {
-            const { id } = req.params;
-            await payrollService.deletePayrollComponent(parseInt(id));
-            res.status(200).json({ message: "Payroll component deleted successfully" });
-        } catch (error: any) {
-            res.status(500).json({ message: error.message });
-        }
-    }
-
-    // Lấy danh sách thành phần lương theo loại
-    async getPayrollComponentsByType(req: Request, res: Response) {
-        try {
-            const { type } = req.params;
-            const result = await payrollService.getPayrollComponentsByType(type as ComponentType);
-            res.status(200).json(result);
-        } catch (error: any) {
-            res.status(500).json({ message: error.message });
-        }
-    }
-
-    // Lấy chi tiết bảng lương tháng
-    async getMonthlyPayrollDetail(req: Request, res: Response) {
+    // Lấy chi tiết bảng lương tháng (Giữ lại nếu vẫn cần)
+    async getPayrollDetail(req: Request, res: Response) {
         try {
             const { userId, month, year } = req.params;
-            const result = await payrollService.getMonthlyPayrollDetail(
+            const result = await payrollService.getPayrollDetail(
                 parseInt(userId),
                 parseInt(month),
                 parseInt(year)
@@ -92,11 +80,35 @@ class PayrollController {
     }
 
     // Hoàn tất bảng lương tháng
-    async finalizeMonthlyPayroll(req: Request, res: Response) {
+    async finalizePayroll(req: Request, res: Response) {
         try {
             const { id } = req.params;
-            await payrollService.finalizeMonthlyPayroll(parseInt(id));
-            res.status(200).json({ message: "Monthly payroll finalized successfully" });
+            await payrollService.finalizePayroll(parseInt(id));
+            res.status(200).json({ message: "Payroll finalized successfully" });
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    // Cập nhật bảng lương
+    async updatePayroll(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            const updateData = req.body;
+            const result = await payrollService.updatePayroll(parseInt(id), updateData);
+            res.status(200).json({ message: "Payroll updated successfully", data: result });
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    // Thiết lập ngày thanh toán
+    async setPaymentDate(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            const { paymentDate } = req.body;
+            const result = await payrollService.setPaymentDate(parseInt(id), new Date(paymentDate));
+            res.status(200).json({ message: "Payment date set successfully", data: result });
         } catch (error: any) {
             res.status(500).json({ message: error.message });
         }

@@ -14,6 +14,21 @@ router.use(authenticateToken);
 // Query params: userId, departmentId, startDate, endDate
 router.get('/', attendanceController.getAttendances.bind(attendanceController));
 
+// --- API lịch sử chấm công mới ---
+// Đặt trước route '/:id' để tránh bị bắt nhầm
+
+// GET /api/attendances/history/day - Lấy lịch sử chấm công theo ngày (30 ngày gần nhất hoặc theo thông số)
+// Query params: days (số ngày), userId, departmentId
+router.get('/history/day', attendanceController.getAttendanceHistoryByDay.bind(attendanceController));
+
+// GET /api/attendances/history/month - Lấy lịch sử chấm công theo tháng
+// Query params: year, month, userId, departmentId
+router.get('/history/month', attendanceController.getAttendanceHistoryByMonth.bind(attendanceController));
+
+// GET /api/attendances/by-date - Lấy dữ liệu chấm công theo ngày cụ thể
+// Query params: date (YYYY-MM-DD), userId, departmentId
+router.get('/by-date', attendanceController.getAttendanceBySpecificDate.bind(attendanceController));
+
 // GET /api/attendances/:id - Lấy chi tiết chấm công theo ID (có phân quyền trong service)
 router.get('/:id', attendanceController.getAttendanceById.bind(attendanceController));
 
