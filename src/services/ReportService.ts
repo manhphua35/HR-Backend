@@ -4,9 +4,9 @@ import { Department } from '../entities/core/Department';
 import { User } from '../entities/core/User';
 import { Payroll } from '../entities/payroll/Payroll';
 import { Leave, LeaveStatus } from '../entities/leave/Leave';
-import { TrainingResult } from '../entities/training/TrainingResult';
+import { TrainingCourse } from '../entities/training/TrainingCourse';
 import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
-import { Between, LessThanOrEqual, MoreThanOrEqual, In } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual, In, IsNull, MoreThan } from 'typeorm';
 
 class ReportService {
     private static instance: ReportService;
@@ -14,7 +14,7 @@ class ReportService {
     private userRepo = AppDataSource.getRepository(User);
     private payrollRepo = AppDataSource.getRepository(Payroll);
     private leaveRepo = AppDataSource.getRepository(Leave);
-    private trainingRepo = AppDataSource.getRepository(TrainingResult);
+    private trainingRepo = AppDataSource.getRepository(TrainingCourse);
     private performanceRepo = AppDataSource.getRepository(PerformanceReview);
     private reportRepo = AppDataSource.getRepository(DepartmentReport);
 
@@ -97,10 +97,16 @@ class ReportService {
         const totalAllowances = payrolls.reduce((sum, p) => sum + Number(p.totalAllowance), 0);
         const totalDeductions = payrolls.reduce((sum, p) => sum + Number(p.totalDeduction), 0);
 
+        // Lấy danh sách người dùng trong phòng ban
+        const users = await this.userRepo.find({
+            where: { departmentId }
+        });
+        const userIds = users.map(u => u.id);
+
         // Tính giờ đào tạo
         const trainings = await this.trainingRepo.find({
             where: {
-                user: { departmentId },
+                userId: In(userIds),
                 completionDate: Between(startDate, endDate)
             }
         });
@@ -160,6 +166,7 @@ class ReportService {
     async getHRCostStatistics(month: number, year: number): Promise<any[]> {
         const departments = await this.departmentRepo.find();
         const results = [];
+        const periodEndDate = new Date(year, month, 0); // Last day of the given month
 
         for (const dept of departments) {
             const payrolls = await this.payrollRepo.find({
@@ -174,11 +181,28 @@ class ReportService {
                 sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction) + Number(p.bonus), 0
             );
 
+            const activeEmployeesInDept = await this.userRepo.count({
+                where: [
+                    {
+                        departmentId: dept.id,
+                        isActive: true,
+                        hireDate: LessThanOrEqual(periodEndDate),
+                        resignationDate: IsNull()
+                    },
+                    {
+                        departmentId: dept.id,
+                        isActive: true,
+                        hireDate: LessThanOrEqual(periodEndDate),
+                        resignationDate: MoreThan(periodEndDate)
+                    }
+                ]
+            });
+
             results.push({
                 department: dept.name,
-                totalEmployees: payrolls.length,
+                totalEmployees: activeEmployeesInDept,
                 totalCost,
-                averageCost: payrolls.length > 0 ? totalCost / payrolls.length : 0
+                averageCost: activeEmployeesInDept > 0 ? totalCost / activeEmployeesInDept : 0
             });
         }
 
@@ -188,20 +212,33 @@ class ReportService {
     // Thống kê tổng hợp cho dashboard
     async getDashboardData(month: number, year: number): Promise<any> {
         const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0);
+        const endDate = new Date(year, month, 0); // Last day of the given month
         const currentDate = new Date();
 
         // Thực hiện tất cả các queries song song để tối ưu hiệu suất
         const [
-            totalEmployees,
+            totalActiveEmployees, // Renamed from totalEmployees for clarity
             departments,
             activeLeaves,
             currentTrainings,
             totalPayroll,
             performanceReviews
         ] = await Promise.all([
-            // Tổng số nhân viên
-            this.userRepo.count(),
+            // Tổng số nhân viên còn làm việc
+            this.userRepo.count({
+                where: [
+                    {
+                        isActive: true,
+                        hireDate: LessThanOrEqual(endDate),
+                        resignationDate: IsNull()
+                    },
+                    {
+                        isActive: true,
+                        hireDate: LessThanOrEqual(endDate),
+                        resignationDate: MoreThan(endDate)
+                    }
+                ]
+            }),
 
             // Danh sách phòng ban
             this.departmentRepo.find(),
@@ -243,74 +280,51 @@ class ReportService {
         // Tính toán thống kê theo phòng ban
         const departmentStats = await Promise.all(
             departments.map(async dept => {
-                const deptEmployees = await this.userRepo.count({ where: { departmentId: dept.id } });
-                const deptPayroll = totalPayroll.filter(p => p.user.departmentId === dept.id);
-                const deptLeaves = activeLeaves.filter(l => l.user.departmentId === dept.id);
-                const deptTrainings = currentTrainings.filter(t => t.user.departmentId === dept.id);
-                const deptReviews = performanceReviews.filter(r => r.employee.departmentId === dept.id);
-
+                const activeDeptEmployees = await this.userRepo.count({
+                    where: [
+                        {
+                            departmentId: dept.id,
+                            isActive: true,
+                            hireDate: LessThanOrEqual(endDate),
+                            resignationDate: IsNull()
+                        },
+                        {
+                            departmentId: dept.id,
+                            isActive: true,
+                            hireDate: LessThanOrEqual(endDate),
+                            resignationDate: MoreThan(endDate)
+                        }
+                    ]
+                });
+                const deptPayroll = totalPayroll.filter(p => p.user?.departmentId === dept.id);
+                const deptLeaves = activeLeaves.filter(l => l.user?.departmentId === dept.id);
+                const deptTrainings = currentTrainings.filter(t => t.user?.departmentId === dept.id);
+                const deptReviews = performanceReviews.filter(r => r.employee?.departmentId === dept.id);
+                
                 return {
-                    departmentId: dept.id,
-                    departmentName: dept.name,
-                    employeeCount: deptEmployees,
-                    activeLeaves: deptLeaves.length,
-                    ongoingTrainings: deptTrainings.length,
-                    averagePerformance: deptReviews.length > 0
-                        ? deptReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / deptReviews.length
-                        : 100,
-                    totalSalary: deptPayroll.reduce((sum, p) =>
-                        sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction) + Number(p.bonus), 0
-                    ),
+                    department: dept.name,
+                    employeeCount: activeDeptEmployees,
+                    leaveCount: deptLeaves.length,
+                    trainingCount: deptTrainings.length,
+                    totalSalary: deptPayroll.reduce((sum, p) => sum + (Number(p.baseSalary || 0) + Number(p.totalAllowance || 0) + Number(p.bonus || 0) - Number(p.totalDeduction || 0)), 0),
+                    avgPerformance: deptReviews.length > 0
+                        ? Number((deptReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / deptReviews.length).toFixed(2))
+                        : 0
                 };
             })
         );
 
-        // Trả về tất cả dữ liệu dashboard
         return {
-            overview: {
-                totalEmployees,
-                totalDepartments: departments.length,
+            summary: {
+                totalEmployees: totalActiveEmployees, // Use the new count
                 activeLeaves: activeLeaves.length,
-                currentTrainings: currentTrainings.length,
-                totalSalary: totalPayroll.reduce((sum, p) =>
-                    sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction) + Number(p.bonus), 0
-                ),
-                averagePerformance: performanceReviews.length > 0
-                    ? performanceReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / performanceReviews.length
-                    : 100
+                ongoingTrainings: currentTrainings.length,
+                totalSalary: totalPayroll.reduce((sum, p) => sum + (Number(p.baseSalary || 0) + Number(p.totalAllowance || 0) + Number(p.bonus || 0) - Number(p.totalDeduction || 0)), 0),
+                avgPerformance: performanceReviews.length > 0
+                    ? Number((performanceReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / performanceReviews.length).toFixed(2))
+                    : 0
             },
-            departmentStats,
-            leaveStats: {
-                total: activeLeaves.length,
-                details: activeLeaves.map(leave => ({
-                    id: leave.id,
-                    employeeName: leave.user.fullName,
-                    departmentName: departments.find(d => d.id === leave.user.departmentId)?.name || 'Unknown',
-                    startDate: leave.startDate,
-                    endDate: leave.endDate,
-                    reason: leave.reason
-                }))
-            },
-            trainingStats: {
-                total: currentTrainings.length,
-                details: currentTrainings.map(training => ({
-                    id: training.id,
-                    employeeName: training.user.fullName,
-                    departmentName: departments.find(d => d.id === training.user.departmentId)?.name || 'Unknown',
-                    courseName: training.courseId.toString(), // Lưu ý: Có thể cần join với bảng Training Course
-                    score: training.score,
-                    completionDate: training.completionDate
-                }))
-            },
-            payrollStats: {
-                total: totalPayroll.reduce((sum, p) => 
-                    sum + Number(p.baseSalary) + Number(p.totalAllowance) - Number(p.totalDeduction) + Number(p.bonus), 0
-                ),
-                departmentBreakdown: departmentStats.map(dept => ({
-                    departmentName: dept.departmentName,
-                    totalSalary: dept.totalSalary
-                }))
-            }
+            departments: departmentStats
         };
     }
 }

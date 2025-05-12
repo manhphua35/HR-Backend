@@ -13,9 +13,6 @@ import { UserNotification } from "../entities/notification/UserNotification";
 import { Attendance } from "../entities/attendance/Attendance";
 import { DepartmentReport } from "../entities/report/DepartmentReport";
 import { TrainingCourse } from "../entities/training/TrainingCourse";
-import { TrainingParticipant } from "../entities/training/TrainingParticipant";
-import { TrainingResult } from "../entities/training/TrainingResult";
-import { CompetencyAssessment } from "../entities/training/CompetencyAssessment";
 import { EditRequest } from "../entities/profile/EditRequest";
 import { RolePermission } from "../entities/auth/RolePermission";
 
@@ -46,9 +43,6 @@ const tempDataSource = new DataSource({
         Attendance,
         DepartmentReport,
         TrainingCourse,
-        TrainingParticipant,
-        TrainingResult,
-        CompetencyAssessment,
         EditRequest
     ],
 });

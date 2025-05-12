@@ -1,24 +1,15 @@
 import { AppDataSource } from '../config/data-source';
-import { TrainingCourse, TrainingStatus } from '../entities/training/TrainingCourse';
-import { TrainingParticipant, ParticipantStatus } from '../entities/training/TrainingParticipant';
-import { TrainingResult } from '../entities/training/TrainingResult';
-import { CompetencyAssessment } from '../entities/training/CompetencyAssessment';
+import { TrainingCourse, TrainingStatus, ParticipantStatus, CompetencyLevel } from '../entities/training/TrainingCourse';
 import { User } from '../entities/core/User';
 import { Repository } from 'typeorm';
 
 class TrainingService {
     private static instance: TrainingService;
     private courseRepo: Repository<TrainingCourse>;
-    private participantRepo: Repository<TrainingParticipant>;
-    private resultRepo: Repository<TrainingResult>;
-    private competencyRepo: Repository<CompetencyAssessment>;
     private userRepo: Repository<User>;
 
     private constructor() {
         this.courseRepo = AppDataSource.getRepository(TrainingCourse);
-        this.participantRepo = AppDataSource.getRepository(TrainingParticipant);
-        this.resultRepo = AppDataSource.getRepository(TrainingResult);
-        this.competencyRepo = AppDataSource.getRepository(CompetencyAssessment);
         this.userRepo = AppDataSource.getRepository(User);
     }
 
@@ -45,33 +36,18 @@ class TrainingService {
         return course;
     }
 
-    // Đăng ký tham gia khóa đào tạo
-    async registerParticipant(courseId: number, userId: number): Promise<TrainingParticipant> {
-        const participant = new TrainingParticipant();
-        participant.courseId = courseId;
-        participant.userId = userId;
-        participant.registrationDate = new Date();
-        return await this.participantRepo.save(participant);
-    }
-
-    // Ghi nhận kết quả đào tạo
-    async recordTrainingResult(resultData: Partial<TrainingResult>): Promise<TrainingResult> {
-        const result = this.resultRepo.create(resultData);
-        return await this.resultRepo.save(result);
-    }
-
-    // Đánh giá năng lực sau đào tạo
-    async assessCompetency(assessmentData: Partial<CompetencyAssessment>): Promise<CompetencyAssessment> {
-        const assessment = this.competencyRepo.create(assessmentData);
-        return await this.competencyRepo.save(assessment);
-    }
-
     // Lấy danh sách khóa đào tạo
-    async getTrainingCourses(status?: TrainingStatus): Promise<TrainingCourse[]> {
-        const query = this.courseRepo.createQueryBuilder('course');
+    async getTrainingCourses(status?: TrainingStatus, departmentId?: number): Promise<TrainingCourse[]> {
+        const query = this.courseRepo.createQueryBuilder('course')
+            .leftJoinAndSelect('course.department', 'department');
         
         if (status) {
-            query.where('course.status = :status', { status });
+            query.andWhere('course.status = :status', { status });
+        }
+
+        if (departmentId) {
+            query.andWhere('(course.departmentId = :departmentId OR course.departmentId IS NULL)', 
+                { departmentId });
         }
         
         return await query.getMany();
@@ -81,7 +57,7 @@ class TrainingService {
     async getTrainingCourseDetail(id: number): Promise<TrainingCourse> {
         const course = await this.courseRepo.findOne({
             where: { id },
-            relations: ['participants.user', 'results']
+            relations: ['department', 'user', 'assessor']
         });
         if (!course) {
             throw new Error('Training course not found');
@@ -89,27 +65,75 @@ class TrainingService {
         return course;
     }
 
-    // Lấy kết quả đào tạo của nhân viên
-    async getEmployeeTrainingResults(userId: number): Promise<TrainingResult[]> {
-        return await this.resultRepo.find({
-            where: { userId },
-            relations: ['course']
-        });
+    // Đăng ký tham gia khóa đào tạo
+    async registerParticipant(courseId: number, userId: number): Promise<TrainingCourse> {
+        const course = await this.courseRepo.findOneBy({ id: courseId });
+        if (!course) {
+            throw new Error('Training course not found');
+        }
+
+        const user = await this.userRepo.findOneBy({ id: userId });
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        course.userId = userId;
+        course.participantStatus = ParticipantStatus.REGISTERED;
+        course.registrationDate = new Date();
+
+        return await this.courseRepo.save(course);
     }
 
-    // Lấy báo cáo năng lực của nhân viên
-    async getEmployeeCompetencyReport(userId: number): Promise<CompetencyAssessment[]> {
-        return await this.competencyRepo.find({
-            where: { userId },
-            relations: ['course', 'assessor']
-        });
+    // Ghi nhận kết quả đào tạo
+    async recordTrainingResult(courseId: number, resultData: Partial<TrainingCourse>): Promise<TrainingCourse> {
+        const course = await this.courseRepo.findOneBy({ id: courseId });
+        if (!course) {
+            throw new Error('Training course not found');
+        }
+
+        Object.assign(course, resultData);
+        course.completionDate = new Date();
+        
+        return await this.courseRepo.save(course);
     }
 
-    // Gửi email thông báo đào tạo
+    // Đánh giá năng lực
+    async assessCompetency(courseId: number, assessorId: number, assessmentData: Partial<TrainingCourse>): Promise<TrainingCourse> {
+        const course = await this.courseRepo.findOneBy({ id: courseId });
+        if (!course) {
+            throw new Error('Training course not found');
+        }
+
+        const assessor = await this.userRepo.findOneBy({ id: assessorId });
+        if (!assessor) {
+            throw new Error('Assessor not found');
+        }
+
+        Object.assign(course, assessmentData);
+        course.assessorId = assessorId;
+        course.assessmentDate = new Date();
+
+        return await this.courseRepo.save(course);
+    }
+
+    // Xóa khóa đào tạo
+    async deleteTrainingCourse(id: number): Promise<void> {
+        const course = await this.courseRepo.findOneBy({ id });
+        if (!course) {
+            throw new Error('Training course not found');
+        }
+        // TODO: Consider implications:
+        // 1. What happens to participants if a course is deleted?
+        // 2. Should there be a soft delete mechanism instead?
+        // For now, performing a hard delete.
+        await this.courseRepo.remove(course);
+    }
+
+    // Gửi thông báo đào tạo
     async sendTrainingNotification(courseId: number): Promise<void> {
         const course = await this.courseRepo.findOne({
             where: { id: courseId },
-            relations: ['participants.user']
+            relations: ['user', 'department']
         });
 
         if (!course) {
@@ -121,11 +145,12 @@ class TrainingService {
     }
 
     // Xuất báo cáo năng lực
-    async exportCompetencyReport(userId: number): Promise<any> {
-        const assessments = await this.getEmployeeCompetencyReport(userId);
-        // TODO: Implement report generation logic
-        // This would typically format the data into a PDF or Excel file
-        return assessments;
+    async exportCompetencyReport(userId: number): Promise<TrainingCourse[]> {
+        return await this.courseRepo.find({
+            where: { userId },
+            relations: ['department', 'assessor'],
+            order: { assessmentDate: 'DESC' }
+        });
     }
 }
 

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { trainingService } from '../services/TrainingService';
+import { departmentService } from '../services/DepartmentService';
 import { TrainingStatus } from '../entities/training/TrainingCourse';
-import { CompetencyLevel } from '../entities/training/CompetencyAssessment';
 
 class TrainingController {
     private static instance: TrainingController;
@@ -15,14 +15,38 @@ class TrainingController {
         return TrainingController.instance;
     }
 
+    // Lấy danh sách phòng ban
+    public async getAllDepartments(_req: Request, res: Response): Promise<void> {
+        try {
+            const departments = await departmentService.getAllDepartments();
+            
+            res.status(200).json({
+                success: true,
+                data: departments
+            });
+        } catch (error) {
+            console.error('Error getting departments:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+
     // Tạo khóa đào tạo mới
     async createTrainingCourse(req: Request, res: Response) {
         try {
             const courseData = req.body;
             const result = await trainingService.createTrainingCourse(courseData);
-            res.status(201).json(result);
+            res.status(201).json({
+                success: true,
+                data: result
+            });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
@@ -32,53 +56,35 @@ class TrainingController {
             const { id } = req.params;
             const courseData = req.body;
             const result = await trainingService.updateTrainingCourse(parseInt(id), courseData);
-            res.status(200).json(result);
+            res.status(200).json({
+                success: true,
+                data: result
+            });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
-        }
-    }
-
-    // Đăng ký tham gia khóa đào tạo
-    async registerParticipant(req: Request, res: Response) {
-        try {
-            const { courseId, userId } = req.body;
-            const result = await trainingService.registerParticipant(courseId, userId);
-            res.status(201).json(result);
-        } catch (error: any) {
-            res.status(500).json({ message: error.message });
-        }
-    }
-
-    // Ghi nhận kết quả đào tạo
-    async recordTrainingResult(req: Request, res: Response) {
-        try {
-            const resultData = req.body;
-            const result = await trainingService.recordTrainingResult(resultData);
-            res.status(201).json(result);
-        } catch (error: any) {
-            res.status(500).json({ message: error.message });
-        }
-    }
-
-    // Đánh giá năng lực
-    async assessCompetency(req: Request, res: Response) {
-        try {
-            const assessmentData = req.body;
-            const result = await trainingService.assessCompetency(assessmentData);
-            res.status(201).json(result);
-        } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
     // Lấy danh sách khóa đào tạo
     async getTrainingCourses(req: Request, res: Response) {
         try {
-            const { status } = req.query;
-            const result = await trainingService.getTrainingCourses(status as TrainingStatus);
-            res.status(200).json(result);
+            const { status, departmentId } = req.query;
+            const result = await trainingService.getTrainingCourses(
+                status as TrainingStatus,
+                departmentId ? parseInt(departmentId as string) : undefined
+            );
+            res.status(200).json({
+                success: true,
+                data: result
+            });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
@@ -87,31 +93,66 @@ class TrainingController {
         try {
             const { id } = req.params;
             const result = await trainingService.getTrainingCourseDetail(parseInt(id));
-            res.status(200).json(result);
+            res.status(200).json({
+                success: true,
+                data: result
+            });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
-    // Lấy kết quả đào tạo của nhân viên
-    async getEmployeeTrainingResults(req: Request, res: Response) {
+    // Đăng ký tham gia khóa đào tạo
+    async registerParticipant(req: Request, res: Response) {
         try {
-            const { userId } = req.params;
-            const result = await trainingService.getEmployeeTrainingResults(parseInt(userId));
-            res.status(200).json(result);
+            const { courseId, userId } = req.body;
+            const result = await trainingService.registerParticipant(courseId, userId);
+            res.status(201).json({
+                success: true,
+                data: result
+            });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
-    // Lấy báo cáo năng lực của nhân viên
-    async getEmployeeCompetencyReport(req: Request, res: Response) {
+    // Ghi nhận kết quả đào tạo
+    async recordTrainingResult(req: Request, res: Response) {
         try {
-            const { userId } = req.params;
-            const result = await trainingService.getEmployeeCompetencyReport(parseInt(userId));
-            res.status(200).json(result);
+            const { courseId, ...resultData } = req.body;
+            const result = await trainingService.recordTrainingResult(courseId, resultData);
+            res.status(201).json({
+                success: true,
+                data: result
+            });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    // Đánh giá năng lực
+    async assessCompetency(req: Request, res: Response) {
+        try {
+            const { courseId, assessorId, ...assessmentData } = req.body;
+            const result = await trainingService.assessCompetency(courseId, assessorId, assessmentData);
+            res.status(201).json({
+                success: true,
+                data: result
+            });
+        } catch (error: any) {
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
@@ -120,9 +161,15 @@ class TrainingController {
         try {
             const { courseId } = req.params;
             await trainingService.sendTrainingNotification(parseInt(courseId));
-            res.status(200).json({ message: 'Notification sent successfully' });
+            res.status(200).json({
+                success: true,
+                message: 'Notification sent successfully'
+            });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
         }
     }
 
@@ -131,9 +178,39 @@ class TrainingController {
         try {
             const { userId } = req.params;
             const report = await trainingService.exportCompetencyReport(parseInt(userId));
-            res.status(200).json(report);
+            res.status(200).json({
+                success: true,
+                data: report
+            });
         } catch (error: any) {
-            res.status(500).json({ message: error.message });
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    // Xóa khóa đào tạo
+    async deleteTrainingCourse(req: Request, res: Response) {
+        try {
+            const { id } = req.params;
+            await trainingService.deleteTrainingCourse(parseInt(id));
+            res.status(200).json({
+                success: true,
+                message: 'Training course deleted successfully'
+            });
+        } catch (error: any) {
+            if (error.message === 'Training course not found') {
+                res.status(404).json({
+                    success: false,
+                    message: error.message
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    message: 'Error deleting training course: ' + error.message
+                });
+            }
         }
     }
 }

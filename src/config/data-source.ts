@@ -8,9 +8,9 @@ import { RolePermission } from "../entities/auth/RolePermission";
 import { Leave } from "../entities/leave/Leave";
 import { Payroll } from "../entities/payroll/Payroll";
 import { TrainingCourse } from "../entities/training/TrainingCourse";
-import { TrainingParticipant } from "../entities/training/TrainingParticipant";
-import { TrainingResult } from "../entities/training/TrainingResult";
-import { CompetencyAssessment } from "../entities/training/CompetencyAssessment";
+// import { TrainingParticipant } from "../entities/training/TrainingParticipant";
+// import { TrainingResult } from "../entities/training/TrainingResult";
+// import { CompetencyAssessment } from "../entities/training/CompetencyAssessment";
 import { EditRequest } from "../entities/profile/EditRequest";
 import { DepartmentReport } from "../entities/report/DepartmentReport";
 import { PerformanceReview } from "../entities/performance/PerformanceReview";
@@ -38,9 +38,9 @@ export const AppDataSource = new DataSource({
         Leave,
         Payroll,
         TrainingCourse,
-        TrainingParticipant,
-        TrainingResult,
-        CompetencyAssessment,
+        // TrainingParticipant,
+        // TrainingResult,
+        // CompetencyAssessment,
         EditRequest,
         DepartmentReport,
         PerformanceReview,

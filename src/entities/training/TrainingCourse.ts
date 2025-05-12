@@ -1,12 +1,26 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from "typeorm";
-import { TrainingParticipant } from "./TrainingParticipant";
-import { TrainingResult } from "./TrainingResult";
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from "typeorm";
+import { Department } from "../core/Department";
+import { User } from "../core/User";
 
 export enum TrainingStatus {
     PLANNED = "PLANNED",
     ONGOING = "ONGOING",
     COMPLETED = "COMPLETED",
     CANCELLED = "CANCELLED"
+}
+
+export enum ParticipantStatus {
+    REGISTERED = "REGISTERED",
+    CONFIRMED = "CONFIRMED",
+    ATTENDED = "ATTENDED",
+    CANCELLED = "CANCELLED"
+}
+
+export enum CompetencyLevel {
+    BEGINNER = "BEGINNER",
+    INTERMEDIATE = "INTERMEDIATE",
+    ADVANCED = "ADVANCED",
+    EXPERT = "EXPERT"
 }
 
 @Entity("training_courses")
@@ -30,22 +44,90 @@ export class TrainingCourse {
     status: TrainingStatus;
 
     @Column({ length: 100 })
-    trainer: string;
-
-    @Column({ length: 100 })
     location: string;
 
-    @Column({ name: "max_participants", default: 0 })
-    maxParticipants: number;
+    @Column({ length: 100, nullable: true })
+    instructor: string;
 
     @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
     budget: number;
 
-    @OneToMany(() => TrainingParticipant, participant => participant.course)
-    participants: TrainingParticipant[];
+    // Department relationship
+    @Column({ name: "department_id", nullable: true })
+    departmentId: number;
 
-    @OneToMany(() => TrainingResult, result => result.course)
-    results: TrainingResult[];
+    @ManyToOne(() => Department)
+    @JoinColumn({ name: "department_id" })
+    department: Department;
+
+    // Participant fields
+    @Column({ name: "participant_status", type: "enum", enum: ParticipantStatus, default: ParticipantStatus.REGISTERED })
+    participantStatus: ParticipantStatus;
+
+    @Column({ name: "registration_date", type: "date", nullable: true })
+    registrationDate: Date;
+
+    @Column({ name: "participant_notes", type: "text", nullable: true })
+    participantNotes: string;
+
+    // Result fields
+    @Column("decimal", { precision: 5, scale: 2, nullable: true })
+    score: number;
+
+    @Column({ name: "evaluation", type: "text", nullable: true })
+    evaluation: string;
+
+    @Column({ name: "completion_date", type: "date", nullable: true })
+    completionDate: Date;
+
+    @Column({ name: "feedback", type: "text", nullable: true })
+    feedback: string;
+
+    @Column({ name: "skills_gained", type: "text", nullable: true })
+    skillsGained: string;
+
+    @Column({ name: "improvement_areas", type: "text", nullable: true })
+    improvementAreas: string;
+
+    @Column({ name: "certificate_issued", default: false })
+    certificateIssued: boolean;
+
+    @Column({ name: "certificate_number", length: 50, nullable: true })
+    certificateNumber: string;
+
+    // Competency Assessment fields
+    @Column({ name: "competency_level", type: "enum", enum: CompetencyLevel, default: CompetencyLevel.BEGINNER })
+    competencyLevel: CompetencyLevel;
+
+    @Column({ name: "assessment_date", type: "date", nullable: true })
+    assessmentDate: Date;
+
+    @Column({ name: "skills_demonstrated", type: "text", nullable: true })
+    skillsDemonstrated: string;
+
+    @Column({ name: "performance_indicators", type: "text", nullable: true })
+    performanceIndicators: string;
+
+    @Column({ name: "recommendations", type: "text", nullable: true })
+    recommendations: string;
+
+    @Column({ name: "next_assessment_date", type: "date", nullable: true })
+    nextAssessmentDate: Date;
+
+    // User relationships
+    @Column({ name: "user_id", nullable: true })
+    userId: number;
+
+    @ManyToOne(() => User)
+    @JoinColumn({ name: "user_id" })
+    user: User;
+
+    @Column({ name: "assessor_id", nullable: true })
+    assessorId: number;
+
+    @ManyToOne(() => User)
+    @JoinColumn({ name: "assessor_id" })
+    assessor: User;
 
     @CreateDateColumn({ name: "created_at" })
     createdAt: Date;
