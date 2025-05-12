@@ -3,22 +3,22 @@ import dotenv from 'dotenv';
 // Load env variables first
 dotenv.config();
 import { AppDataSource } from "../config/data-source";
-import { User } from "../entities/core/User";
-import { Role } from "../entities/auth/Role";
-import { Permission } from "../entities/auth/Permission";
-import { Department } from "../entities/core/Department";
-import { Position } from "../entities/core/Position";
-import { Leave } from "../entities/leave/Leave";
-import { Payroll } from "../entities/payroll/Payroll";
-import { PerformanceReview } from "../entities/performance/PerformanceReview";
-import { PerformancePlan } from "../entities/performance/PerformancePlan";
-import { Notification } from "../entities/notification/Notification";
-import { UserNotification } from "../entities/notification/UserNotification";
-import { Attendance } from "../entities/attendance/Attendance";
-import { DepartmentReport } from "../entities/report/DepartmentReport";
-import { TrainingCourse } from "../entities/training/TrainingCourse";
-import { EditRequest } from "../entities/profile/EditRequest";
-import { RolePermission } from "../entities/auth/RolePermission";
+// import { User } from "../entities/core/User";
+// import { Role } from "../entities/auth/Role";
+// import { Permission } from "../entities/auth/Permission";
+// import { Department } from "../entities/core/Department";
+// import { Position } from "../entities/core/Position";
+// import { Leave } from "../entities/leave/Leave";
+// import { Payroll } from "../entities/payroll/Payroll";
+// import { PerformanceReview } from "../entities/performance/PerformanceReview";
+// import { PerformancePlan } from "../entities/performance/PerformancePlan";
+// import { Notification } from "../entities/notification/Notification";
+// import { UserNotification } from "../entities/notification/UserNotification";
+// import { Attendance } from "../entities/attendance/Attendance";
+// import { DepartmentReport } from "../entities/report/DepartmentReport";
+// import { TrainingCourse } from "../entities/training/TrainingCourse";
+// import { EditRequest } from "../entities/profile/EditRequest";
+// import { RolePermission } from "../entities/auth/RolePermission";
 import { SeedService } from "../services/SeedService";
 
 async function resetAndSeedDatabase() {
