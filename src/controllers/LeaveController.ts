@@ -313,7 +313,7 @@ class LeaveController {
     public async getUserLeaves(req: Request, res: Response): Promise<void> {
         try {
             const leaves = await leaveService.getUserLeaves(req.user!.userId);
-
+            
             res.status(200).json({
                 success: true,
                 data: leaves

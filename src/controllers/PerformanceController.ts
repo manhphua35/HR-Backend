@@ -227,6 +227,60 @@ class PerformanceController {
         }
     }
 
+    public async getReviewDetails(req: Request, res: Response): Promise<void> {
+        try {
+            const reviewId = parseInt(req.params.reviewId);
+            
+            if (isNaN(reviewId)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Invalid review ID'
+                });
+                return;
+            }
+            
+            // Lấy thông tin đánh giá
+            const review = await performanceService.getReviewDetails(reviewId);
+            
+            if (!review) {
+                res.status(404).json({
+                    success: false,
+                    message: 'Performance review not found'
+                });
+                return;
+            }
+            
+            // Kiểm tra quyền truy cập:
+            // - Nếu là nhân viên, chỉ được xem đánh giá của chính mình
+            // - Nếu là trưởng phòng, chỉ được xem đánh giá của nhân viên trong phòng
+            // - Nếu là HR hoặc admin, được xem tất cả đánh giá
+            const isOwnReview = req.user?.userId === review.employeeId;
+            const isManager = req.user?.roleType === RoleType.DEPARTMENT_HEAD;
+            const isAdmin = req.user?.roleType === RoleType.SYSTEM_ADMIN || req.user?.roleType === RoleType.HR_STAFF;
+            const isSameDepartment = req.user?.departmentId === review.employee?.departmentId;
+            
+            if (!isOwnReview && !isAdmin && !(isManager && isSameDepartment)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to view this review'
+                });
+                return;
+            }
+            
+            res.status(200).json({
+                success: true,
+                data: review
+            });
+            
+        } catch (error) {
+            console.error('Error getting review details:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+
     public async getDepartmentReviews(req: Request, res: Response): Promise<void> {
         try {
             // Verify user is department manager
@@ -257,7 +311,8 @@ class PerformanceController {
             });
         }
     }
-public async getOverallDepartmentPerformance(req: Request, res: Response): Promise<void> {
+
+    public async getOverallDepartmentPerformance(req: Request, res: Response): Promise<void> {
         try {
             // Logic to fetch overall performance data will be in the service
             // For now, assume performanceService.getOverallDepartmentPerformance exists

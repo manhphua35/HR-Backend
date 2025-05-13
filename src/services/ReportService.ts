@@ -7,6 +7,7 @@ import { Leave, LeaveStatus } from '../entities/leave/Leave';
 import { TrainingCourse } from '../entities/training/TrainingCourse';
 import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
 import { Between, LessThanOrEqual, MoreThanOrEqual, In, IsNull, MoreThan } from 'typeorm';
+import { Attendance } from '../entities/attendance/Attendance';
 
 class ReportService {
     private static instance: ReportService;
@@ -326,6 +327,177 @@ class ReportService {
             },
             departments: departmentStats
         };
+    }
+
+    async getEmployeeDashboardData(employeeId: number, month: number, year: number): Promise<any> {
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0); // Last day of the given month
+
+        // Lấy thông tin nhân viên
+        const employee = await this.userRepo.findOne({
+            where: { id: employeeId },
+            relations: ['department', 'position']
+        });
+
+        if (!employee) {
+            throw new Error('Không tìm thấy nhân viên');
+        }
+
+        // Lấy dữ liệu chấm công
+        const attendances = await this.findAttendances(employee.id, startDate, endDate);
+        const totalWorkDays = this.getWorkDaysInMonth(month, year);
+        const presentDays = attendances.filter(a => a.status === 'PRESENT').length;
+        const absentDays = attendances.filter(a => a.status === 'ABSENT').length;
+        const lateDays = attendances.filter(a => a.status === 'LATE').length;
+
+        // Lấy thông tin nghỉ phép
+        const leaves = await this.leaveRepo.find({
+            where: {
+                user: { id: employee.id }
+            }
+        });
+        
+        const usedLeaveDays = leaves
+            .filter(leave => leave.status === LeaveStatus.APPROVED && leave.startDate && leave.endDate)
+            .reduce((total, leave) => {
+                // Ensure startDate and endDate are valid Date objects
+                const startDate = typeof leave.startDate === 'string' ? new Date(leave.startDate) : leave.startDate;
+                const endDate = typeof leave.endDate === 'string' ? new Date(leave.endDate) : leave.endDate;
+
+                if (startDate instanceof Date && endDate instanceof Date && !isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                    // Calculate the difference in days (inclusive)
+                    const diffTime = endDate.getTime() - startDate.getTime();
+                    // Add 1 because the difference is exclusive of the end date, and we need inclusive days
+                    const days = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; 
+                    return total + days;
+                } else {
+                    console.warn(`Skipping leave ID ${leave.id} due to invalid dates: start=${leave.startDate}, end=${leave.endDate}`);
+                    return total; // Skip this leave record if dates are invalid
+                }
+            }, 0);
+        
+        const pendingLeaves = leaves.filter(leave => leave.status === LeaveStatus.PENDING).length;
+
+        // Lấy payroll gần nhất
+        const payroll = await this.payrollRepo.findOne({
+            where: {
+                user: { id: employee.id },
+                month,
+                year
+            }
+        });
+
+        // Lấy khóa đào tạo đang diễn ra
+        const trainings = await this.trainingRepo.find({
+            where: {
+                user: { id: employee.id },
+                startDate: LessThanOrEqual(endDate),
+                endDate: MoreThanOrEqual(startDate)
+            }
+        });
+
+        const mappedTrainings = trainings.map(course => ({
+            id: course.id,
+            name: course.name,
+            startDate: course.startDate,
+            endDate: course.endDate,
+            progress: course.score ? (course.score / 100) * 100 : 0
+        }));
+
+        // Lấy đánh giá hiệu suất gần nhất
+        const review = await this.performanceRepo.findOne({
+            where: {
+                employee: { id: employee.id },
+                status: ReviewStatus.APPROVED
+            },
+            relations: ['plan'],
+            order: {
+                reviewDate: 'DESC'
+            }
+        });
+
+        let performanceData = null;
+        if (review && review.plan && review.plan.startDate && review.plan.endDate) {
+            // Ensure plan dates are valid Date objects
+            const planStartDate = typeof review.plan.startDate === 'string' ? new Date(review.plan.startDate) : review.plan.startDate;
+            const planEndDate = typeof review.plan.endDate === 'string' ? new Date(review.plan.endDate) : review.plan.endDate;
+
+            if (planStartDate instanceof Date && planEndDate instanceof Date && !isNaN(planStartDate.getTime()) && !isNaN(planEndDate.getTime())) {
+                performanceData = {
+                    period: `${planStartDate.toLocaleDateString()} - ${planEndDate.toLocaleDateString()}`,
+                    overallScore: review.totalScore,
+                    strengths: review.strengths?.split(',').map(s => s.trim()) || [],
+                    improvements: review.improvement?.split(',').map(s => s.trim()) || []
+                };
+            } else {
+                 console.warn(`Skipping performance review ID ${review.id} for plan ${review.plan.id} due to invalid plan dates: start=${review.plan.startDate}, end=${review.plan.endDate}`);
+            }
+        }
+
+        return {
+            employee: {
+                id: employee.id,
+                fullName: employee.fullName,
+                email: employee.email,
+                department: employee.department?.name,
+                position: employee.position?.title
+            },
+            attendance: {
+                totalWorkDays,
+                presentDays,
+                absentDays,
+                lateDays
+            },
+            leaves: {
+                used: usedLeaveDays,
+                remaining: employee.remainingLeaves || 0,
+                pending: pendingLeaves
+            },
+            payroll: payroll ? {
+                month: payroll.month,
+                year: payroll.year,
+                basicSalary: payroll.baseSalary,
+                totalAllowance: payroll.totalAllowance,
+                totalDeduction: payroll.totalDeduction,
+                netSalary: payroll.netSalary
+            } : null,
+            training: mappedTrainings,
+            performance: performanceData
+        };
+    }
+
+    private getWorkDaysInMonth(month: number, year: number): number {
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0);
+        let workDays = 0;
+
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            const day = d.getDay();
+            if (day !== 0 && day !== 6) { // 0 = Chủ Nhật, 6 = Thứ Bảy
+                workDays++;
+            }
+        }
+
+        return workDays;
+    }
+
+    private async findAttendances(userId: number, startDate: Date, endDate: Date): Promise<any[]> {
+        const attendanceRepository = AppDataSource.getRepository(Attendance);
+        
+        const startDateStr = startDate.toISOString().split('T')[0];
+        const endDateStr = endDate.toISOString().split('T')[0];
+        
+        try {
+            return await attendanceRepository.find({
+                where: {
+                    user: { id: userId },
+                    date: Between(startDateStr, endDateStr)
+                }
+            });
+        } catch (error) {
+            console.error('Error fetching attendances:', error);
+            return [];
+        }
     }
 }
 

@@ -280,6 +280,18 @@ class PerformanceService {
             throw error;
         }
     }
+
+    public async getReviewDetails(reviewId: number): Promise<PerformanceReview | null> {
+        try {
+            return await this.reviewRepository.findOne({
+                where: { id: reviewId },
+                relations: ['plan', 'employee', 'reviewer', 'employee.department'],
+            });
+        } catch (error) {
+            console.error('Error fetching review details:', error);
+            throw error;
+        }
+    }
 }
 
 export const performanceService = PerformanceService.getInstance();

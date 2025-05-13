@@ -306,11 +306,14 @@ class LeaveService {
 
     public async getUserLeaves(userId: number): Promise<Leave[]> {
         try {
-            return await this.leaveRepository.find({
-                where: { userId },
-                relations: ['approver'],
-                order: { createdAt: 'DESC' }
-            });
+            return await this.leaveRepository
+                .createQueryBuilder('leave')
+                .leftJoinAndSelect('leave.user', 'user')
+                .leftJoinAndSelect('leave.approver', 'approver')
+                .leftJoinAndSelect('user.department', 'department')
+                .where('leave.userId = :userId', { userId })
+                .orderBy('leave.createdAt', 'DESC')
+                .getMany();
         } catch (error) {
             throw error;
         }

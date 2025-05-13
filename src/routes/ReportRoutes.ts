@@ -53,4 +53,11 @@ router.get(
     (req, res) => reportController.getDashboardData(req, res)
 );
 
+// Lấy dữ liệu dashboard cho nhân viên cụ thể - Tất cả role đều có thể truy cập, nhưng phân quyền ở controller
+router.get(
+    '/employee-dashboard/:employeeId',
+    authenticateToken,
+    (req, res) => reportController.getEmployeeDashboardData(req, res)
+);
+
 export default router;

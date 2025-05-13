@@ -51,6 +51,13 @@ router.get(
     (req, res) => performanceController.getEmployeeReviews(req, res)
 );
 
+// Get review details by ID - Allow access to the employee being reviewed, their manager, HR staff and admin
+router.get(
+    '/reviews/:reviewId',
+    authenticateToken,
+    (req, res) => performanceController.getReviewDetails(req, res)
+);
+
 // Get overall department performance - Only Admin and HR Staff can access
 router.get(
     '/overall',

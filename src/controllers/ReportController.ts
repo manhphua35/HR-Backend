@@ -132,6 +132,30 @@ class ReportController {
             res.status(500).json({ success: false, message: error.message });
         }
     }
+    
+    // Lấy dữ liệu dashboard cho nhân viên
+    async getEmployeeDashboardData(req: Request, res: Response) {
+        try {
+            const { employeeId } = req.params;
+            const { month, year } = req.query;
+            
+            if (!employeeId || !month || !year) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "Employee ID, month, and year are required" 
+                });
+            }
+
+            const data = await reportService.getEmployeeDashboardData(
+                parseInt(employeeId),
+                parseInt(month as string),
+                parseInt(year as string)
+            );
+            res.status(200).json({ success: true, data: data });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
 }
 
 export const reportController = ReportController.getInstance();
