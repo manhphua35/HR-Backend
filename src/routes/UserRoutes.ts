@@ -45,4 +45,12 @@ router.delete(
     (req, res) => userController.deleteUser(req, res)
 );
 
+// Lấy danh sách nhân viên theo phòng ban
+router.get(
+    '/department/:departmentId',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF, RoleType.DEPARTMENT_HEAD]),
+    (req, res) => userController.getUsersByDepartment(req, res)
+);
+
 export default router;

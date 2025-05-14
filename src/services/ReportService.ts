@@ -4,10 +4,11 @@ import { Department } from '../entities/core/Department';
 import { User } from '../entities/core/User';
 import { Payroll } from '../entities/payroll/Payroll';
 import { Leave, LeaveStatus } from '../entities/leave/Leave';
-import { TrainingCourse } from '../entities/training/TrainingCourse';
+import { TrainingCourse, TrainingStatus } from '../entities/training/TrainingCourse';
 import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
+import { PerformancePlan, PlanStatus } from '../entities/performance/PerformancePlan';
 import { Between, LessThanOrEqual, MoreThanOrEqual, In, IsNull, MoreThan } from 'typeorm';
-import { Attendance } from '../entities/attendance/Attendance';
+import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance';
 
 class ReportService {
     private static instance: ReportService;
@@ -17,7 +18,9 @@ class ReportService {
     private leaveRepo = AppDataSource.getRepository(Leave);
     private trainingRepo = AppDataSource.getRepository(TrainingCourse);
     private performanceRepo = AppDataSource.getRepository(PerformanceReview);
+    private performancePlanRepo = AppDataSource.getRepository(PerformancePlan);
     private reportRepo = AppDataSource.getRepository(DepartmentReport);
+    private attendanceRepo = AppDataSource.getRepository(Attendance);
 
     private constructor() {}
 
@@ -326,6 +329,128 @@ class ReportService {
                     : 0
             },
             departments: departmentStats
+        };
+    }
+
+    // Lấy dữ liệu dashboard cho Trưởng phòng
+    async getDepartmentManagerDashboard(departmentId: number, month: number, year: number): Promise<any> {
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0); // Ngày cuối cùng của tháng
+        const currentDate = new Date();
+        
+        // Đảm bảo departmentId tồn tại
+        const department = await this.departmentRepo.findOneBy({ id: departmentId });
+        if (!department) {
+            throw new Error('Không tìm thấy phòng ban');
+        }
+
+        // 1. Tính tổng số nhân viên trong phòng ban
+        const employeeCount = await this.userRepo.count({
+            where: [
+                {
+                    departmentId,
+                    isActive: true,
+                    hireDate: LessThanOrEqual(endDate),
+                    resignationDate: IsNull()
+                },
+                {
+                    departmentId,
+                    isActive: true,
+                    hireDate: LessThanOrEqual(endDate),
+                    resignationDate: MoreThan(endDate)
+                }
+            ]
+        });
+
+        // 2. Đếm số đơn nghỉ phép đang chờ duyệt
+        const pendingLeaveRequests = await this.leaveRepo.count({
+            where: {
+                user: { departmentId },
+                status: LeaveStatus.PENDING
+            }
+        });
+
+        // 3. Tính tỷ lệ chấm công trong tháng
+        const employees = await this.userRepo.find({
+            where: {
+                departmentId,
+                isActive: true
+            }
+        });
+        
+        const employeeIds = employees.map(e => e.id);
+        
+        const attendanceData = await this.attendanceRepo.find({
+            where: {
+                user: { id: In(employeeIds) },
+                date: Between(startDate.toISOString().split('T')[0], endDate.toISOString().split('T')[0])
+            }
+        });
+
+        const totalWorkDays = this.getWorkDaysInMonth(month, year) * employeeCount;
+        // Sử dụng enum AttendanceStatus
+        const presentDays = attendanceData.filter(a => a.status === AttendanceStatus.PRESENT).length;
+
+        // 4. Tính điểm đánh giá hiệu suất trung bình
+        const performanceReviews = await this.performanceRepo.find({
+            where: {
+                employee: { departmentId },
+                reviewDate: Between(startDate, endDate),
+                status: ReviewStatus.APPROVED
+            }
+        });
+
+        const averagePerformance = performanceReviews.length > 0
+            ? Math.round((performanceReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / performanceReviews.length) * 100) / 100
+            : 0;
+
+        // 5. Tính tỷ lệ hoàn thành kế hoạch hiệu suất
+        const performancePlans = await this.performancePlanRepo.find({
+            where: {
+                departmentId,
+                endDate: MoreThanOrEqual(startDate),
+                startDate: LessThanOrEqual(endDate)
+            }
+        });
+
+        const completedPlans = performancePlans.filter(p => p.status === PlanStatus.COMPLETED).length;
+        const projectCompletion = performancePlans.length > 0
+            ? Math.round((completedPlans / performancePlans.length) * 100)
+            : 0;
+
+        // 6. Tính tỷ lệ hoàn thành đào tạo
+        const trainings = await this.trainingRepo.find({
+            where: {
+                departmentId,
+                endDate: MoreThanOrEqual(startDate),
+                startDate: LessThanOrEqual(endDate)
+            }
+        });
+
+        const completedTrainings = trainings.filter(t => t.status === TrainingStatus.COMPLETED).length;
+        const trainingProgress = trainings.length > 0
+            ? Math.round((completedTrainings / trainings.length) * 100)
+            : 0;
+
+        // 7. Đếm số dự án/kế hoạch đang hoạt động
+        const activeProjects = await this.performancePlanRepo.count({
+            where: {
+                departmentId,
+                status: PlanStatus.ACTIVE
+            }
+        });
+
+        return {
+            employeeCount,
+            pendingLeaveRequests,
+            averagePerformance,
+            attendance: {
+                present: presentDays,
+                total: totalWorkDays
+            },
+            projectCompletion,
+            trainingProgress,
+            activeProjects
         };
     }
 

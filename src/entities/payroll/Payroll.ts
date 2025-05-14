@@ -7,6 +7,21 @@ export enum ComponentType {
     BENEFIT = "BENEFIT"           // Phúc lợi
 }
 
+// Interface cho lịch sử cập nhật
+export interface PayrollHistoryChange {
+    field: string;
+    oldValue: any;
+    newValue: any;
+}
+
+export interface PayrollHistoryEntry {
+    timestamp: string;
+    updatedBy?: number;
+    changes: PayrollHistoryChange[];
+    reason?: string;
+    note?: string;
+}
+
 @Entity("payrolls")
 export class Payroll {
   @PrimaryGeneratedColumn()
@@ -49,7 +64,7 @@ export class Payroll {
   @Column({ type: "decimal", precision: 15, scale: 2, default: 0 })
   tax: number;
 
-  @Column({ name: "net_salary", type: "decimal", precision: 15, scale: 2 })
+  @Column({ name: "net_salary", type: "decimal", precision: 15, scale: 2, nullable: true })
   netSalary: number;
 
   @Column({ name: "payment_date", type: "date", nullable: true })
@@ -60,6 +75,9 @@ export class Payroll {
 
   @Column({ name: "is_finalized", type: "boolean", default: false })
   isFinalized: boolean;
+
+  @Column({ name: "update_history", type: "json", nullable: true })
+  updateHistory: PayrollHistoryEntry[];
 
   @CreateDateColumn({ name: "created_at" })
   createdAt: Date;

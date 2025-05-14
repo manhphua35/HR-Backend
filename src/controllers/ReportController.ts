@@ -156,6 +156,31 @@ class ReportController {
             res.status(500).json({ success: false, message: error.message });
         }
     }
+
+    // Lấy dữ liệu dashboard cho trưởng phòng
+    async getDepartmentManagerDashboard(req: Request, res: Response) {
+        try {
+            const { departmentId } = req.params;
+            const { month, year } = req.query;
+            
+            if (!departmentId || !month || !year) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "Department ID, month, and year are required" 
+                });
+            }
+
+            const data = await reportService.getDepartmentManagerDashboard(
+                parseInt(departmentId),
+                parseInt(month as string),
+                parseInt(year as string)
+            );
+            
+            res.status(200).json({ success: true, data });
+        } catch (error: any) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
 }
 
 export const reportController = ReportController.getInstance();

@@ -228,6 +228,33 @@ class UserService {
             throw error;
         }
     }
+
+    public async getUsersByDepartment(departmentId: number): Promise<User[]> {
+        try {
+            const users = await this.userRepository.find({
+                where: { 
+                    departmentId,
+                    isActive: true
+                },
+                relations: {
+                    department: true,
+                    position: true,
+                    role: true
+                },
+                order: {
+                    fullName: 'ASC'
+                }
+            });
+            
+            // Remove password hashes
+            return users.map(user => {
+                const { passwordHash, ...userWithoutPassword } = user;
+                return userWithoutPassword as User;
+            });
+        } catch (error) {
+            throw error;
+        }
+    }
 }
 
 export const userService = UserService.getInstance();

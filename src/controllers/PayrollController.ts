@@ -6,6 +6,7 @@ import { User } from '../entities/core/User'; // Cần User để ép kiểu req
 import { AppDataSource } from '../config/data-source'; // Import AppDataSource
 import { RoleType } from '../entities/auth/Role'; // Giả sử RoleType được dùng trong token payload
 import { ComponentType } from '../entities/payroll/Payroll';
+import { In } from 'typeorm';
 
 class PayrollController {
     private static instance: PayrollController;
@@ -79,6 +80,79 @@ class PayrollController {
         }
     }
 
+    // Lấy lịch sử thay đổi của bảng lương
+    async getPayrollHistory(req: Request, res: Response) {
+        try {
+            const { payrollId } = req.params;
+            const historyData = await payrollService.getPayrollHistory(parseInt(payrollId));
+            
+            // Nếu có lịch sử thay đổi và có ID người thay đổi, lấy thông tin chi tiết
+            if (historyData && historyData.length > 0) {
+                const userIds = historyData
+                    .filter(entry => entry.updatedBy !== undefined)
+                    .map(entry => entry.updatedBy);
+                
+                if (userIds.length > 0) {
+                    // Lấy thông tin người dùng từ database
+                    const users = await this.userRepo.findBy({ id: In(userIds) });
+                    
+                    // Map thông tin người dùng vào kết quả
+                    const enrichedHistory = historyData.map(entry => {
+                        if (entry.updatedBy) {
+                            const user = users.find(u => u.id === entry.updatedBy);
+                            if (user) {
+                                return {
+                                    ...entry,
+                                    updatedByUser: {
+                                        id: user.id,
+                                        fullName: user.fullName,
+                                        email: user.email,
+                                        department: user.department?.name,
+                                        position: user.position?.title
+                                    }
+                                };
+                            }
+                        }
+                        return entry;
+                    });
+                    
+                    return res.status(200).json(enrichedHistory);
+                }
+            }
+            
+            // Nếu không có người thay đổi hoặc không có lịch sử, trả về dữ liệu gốc
+            res.status(200).json(historyData);
+        } catch (error: any) {
+            res.status(500).json({ message: error.message });
+        }
+    }
+
+    // Xóa một mục trong lịch sử thay đổi lương
+    async deletePayrollHistoryEntry(req: Request, res: Response) {
+        try {
+            const { payrollId, timestamp } = req.params;
+            
+            // Lấy thông tin người thực hiện từ token
+            const tokenPayload = req.user as { userId: number };
+            if (!tokenPayload || !tokenPayload.userId) {
+                return res.status(401).json({ message: "User not authenticated" });
+            }
+            
+            const result = await payrollService.deletePayrollHistoryEntry(
+                parseInt(payrollId),
+                timestamp,
+                tokenPayload.userId
+            );
+            
+            res.status(200).json({ 
+                message: "Đã xóa thành công", 
+                success: true
+            });
+        } catch (error: any) {
+            res.status(500).json({ message: error.message, success: false });
+        }
+    }
+
     // Hoàn tất bảng lương tháng
     async finalizePayroll(req: Request, res: Response) {
         try {
@@ -95,6 +169,13 @@ class PayrollController {
         try {
             const { id } = req.params;
             const updateData = req.body;
+            
+            // Lấy thông tin người thực hiện từ token
+            const tokenPayload = req.user as { userId: number };
+            if (tokenPayload && tokenPayload.userId) {
+                updateData.updatedBy = tokenPayload.userId;
+            }
+            
             const result = await payrollService.updatePayroll(parseInt(id), updateData);
             res.status(200).json({ message: "Payroll updated successfully", data: result });
         } catch (error: any) {

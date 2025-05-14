@@ -60,4 +60,12 @@ router.get(
     (req, res) => reportController.getEmployeeDashboardData(req, res)
 );
 
+// Lấy dữ liệu dashboard cho trưởng phòng - Chỉ DEPARTMENT_HEAD có quyền
+router.get(
+    '/department-dashboard/:departmentId',
+    authenticateToken,
+    checkRole([RoleType.DEPARTMENT_HEAD, RoleType.SYSTEM_ADMIN]),
+    (req, res) => reportController.getDepartmentManagerDashboard(req, res)
+);
+
 export default router;

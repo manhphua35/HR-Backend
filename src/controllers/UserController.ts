@@ -201,6 +201,44 @@ class UserController {
             });
         }
     }
+
+    public async getUsersByDepartment(req: Request, res: Response): Promise<void> {
+        try {
+            const { departmentId } = req.params;
+            
+            // Kiểm tra xem người dùng hiện tại có quyền DEPARTMENT_HEAD không
+            // Nếu là DEPARTMENT_HEAD thì chỉ được xem nhân viên trong phòng ban của mình
+            if (req.user?.roleType === RoleType.DEPARTMENT_HEAD && Number(req.user.departmentId) !== Number(departmentId)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Bạn chỉ có quyền xem nhân viên trong phòng ban của mình'
+                });
+                return;
+            }
+
+            // Chỉ HR_STAFF và SYSTEM_ADMIN được xem nhân viên của bất kỳ phòng ban nào
+            if (!([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN, RoleType.DEPARTMENT_HEAD].includes(req.user?.roleType as RoleType))) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Không có quyền xem danh sách nhân viên theo phòng ban'
+                });
+                return;
+            }
+
+            const users = await userService.getUsersByDepartment(Number(departmentId));
+            
+            res.status(200).json({
+                success: true,
+                data: users
+            });
+        } catch (error) {
+            console.error('Error getting department users:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
 }
 
 export const userController = UserController.getInstance();

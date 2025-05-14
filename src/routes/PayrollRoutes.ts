@@ -24,6 +24,21 @@ router.get(
     (req, res) => payrollController.getPayrollDetail(req, res)
 );
 
+// Lấy lịch sử thay đổi bảng lương
+router.get(
+    '/history/:payrollId',
+    authenticateToken,
+    (req, res) => payrollController.getPayrollHistory(req, res)
+);
+
+// Xóa một mục trong lịch sử thay đổi
+router.delete(
+    '/history/:payrollId/:timestamp',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => payrollController.deletePayrollHistoryEntry(req, res)
+);
+
 // Hoàn tất bảng lương - Chỉ SYSTEM_ADMIN, HR_STAFF có quyền
 router.put(
     '/finalize/:id',
