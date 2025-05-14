@@ -13,7 +13,7 @@ router.post(
     (req, res) => performanceController.createPlan(req, res)
 );
 
-// Get department performance plans
+// Get department performance plans (bao gồm cả kế hoạch toàn công ty)
 router.get(
     '/plans/department',
     authenticateToken,
@@ -28,6 +28,13 @@ router.get(
     (req, res) => performanceController.getAllDepartmentPlans(req, res)
 );
 
+// Get company-wide plans - Accessible by all authenticated users
+router.get(
+    '/plans/company',
+    authenticateToken,
+    (req, res) => performanceController.getCompanyWidePlans(req, res)
+);
+
 // Create performance review - Allow system admin, HR staff and department managers
 router.post(
     '/reviews/create',
@@ -40,7 +47,7 @@ router.post(
 router.get(
     '/reviews/department/:planId',
     authenticateToken,
-    checkRole([RoleType.DEPARTMENT_HEAD]),
+    checkRole([RoleType.DEPARTMENT_HEAD, RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
     (req, res) => performanceController.getDepartmentReviews(req, res)
 );
 

@@ -5,8 +5,7 @@ import { User } from '../entities/core/User';
 import { Payroll } from '../entities/payroll/Payroll';
 import { Leave, LeaveStatus } from '../entities/leave/Leave';
 import { TrainingCourse, TrainingStatus } from '../entities/training/TrainingCourse';
-import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
-import { PerformancePlan, PlanStatus } from '../entities/performance/PerformancePlan';
+import { PerformanceReview, ReviewStatus, PerformancePlan, PlanStatus } from '../entities/performance/Performance';
 import { Between, LessThanOrEqual, MoreThanOrEqual, In, IsNull, MoreThan } from 'typeorm';
 import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance';
 
@@ -405,13 +404,13 @@ class ReportService {
             : 0;
 
         // 5. Tính tỷ lệ hoàn thành kế hoạch hiệu suất
-        const performancePlans = await this.performancePlanRepo.find({
-            where: {
-                departmentId,
-                endDate: MoreThanOrEqual(startDate),
-                startDate: LessThanOrEqual(endDate)
-            }
-        });
+        const performancePlans = await this.performancePlanRepo
+            .createQueryBuilder("plan")
+            .innerJoin("performance_plan_departments", "pd", "pd.plan_id = plan.id")
+            .where("pd.department_id = :departmentId", { departmentId })
+            .andWhere("plan.endDate >= :startDate", { startDate })
+            .andWhere("plan.startDate <= :endDate", { endDate })
+            .getMany();
 
         const completedPlans = performancePlans.filter(p => p.status === PlanStatus.COMPLETED).length;
         const projectCompletion = performancePlans.length > 0
@@ -433,12 +432,12 @@ class ReportService {
             : 0;
 
         // 7. Đếm số dự án/kế hoạch đang hoạt động
-        const activeProjects = await this.performancePlanRepo.count({
-            where: {
-                departmentId,
-                status: PlanStatus.ACTIVE
-            }
-        });
+        const activeProjects = await this.performancePlanRepo
+            .createQueryBuilder("plan")
+            .innerJoin("performance_plan_departments", "pd", "pd.plan_id = plan.id")
+            .where("pd.department_id = :departmentId", { departmentId })
+            .andWhere("plan.status = :status", { status: PlanStatus.ACTIVE })
+            .getCount();
 
         return {
             employeeCount,

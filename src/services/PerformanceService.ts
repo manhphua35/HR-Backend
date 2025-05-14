@@ -1,17 +1,18 @@
 import { AppDataSource } from '../config/data-source';
-import { PerformancePlan, PlanStatus } from '../entities/performance/PerformancePlan';
-import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
+import { PerformancePlan, PlanStatus, PerformanceReview, ReviewStatus } from '../entities/performance/Performance';
 import { User } from '../entities/core/User';
-import { Department } from '../entities/core/Department'; // Import Department
-import { Between, In } from 'typeorm';
+import { Department } from '../entities/core/Department';
+import { Between, In, IsNull } from 'typeorm';
 
 interface CreatePlanData {
     title: string;
     description: string;
     startDate: Date;
     endDate: Date;
-    departmentId: number;
+    departmentIds?: number[];
     createdBy: number;
+    isCompanyWide?: boolean;
+    status?: PlanStatus;
     criteria: {
         id: number;
         name: string;
@@ -63,12 +64,45 @@ class PerformanceService {
                 throw new Error('Criteria weights must sum to 100');
             }
 
+            // Validate departmentIds và isCompanyWide
+            if (data.isCompanyWide && data.departmentIds && data.departmentIds.length > 0) {
+                throw new Error('Company-wide plans cannot have department IDs');
+            }
+
+            if (!data.isCompanyWide && (!data.departmentIds || data.departmentIds.length === 0)) {
+                throw new Error('At least one department ID is required for non-company-wide plans');
+            }
+            
             // Create plan
-            const plan = this.planRepository.create(data);
+            const plan = this.planRepository.create({
+                title: data.title,
+                description: data.description,
+                startDate: data.startDate,
+                endDate: data.endDate,
+                createdBy: data.createdBy,
+                criteria: data.criteria,
+                status: data.status || PlanStatus.ACTIVE,
+                isCompanyWide: data.isCompanyWide || false
+            });
 
+            // Lưu plan trước để có ID
             await this.planRepository.save(plan);
-            return plan;
+            
+            // Nếu không phải company-wide thì thiết lập quan hệ với các phòng ban
+            if (!data.isCompanyWide && data.departmentIds && data.departmentIds.length > 0) {
+                const departments = await this.departmentRepository.findBy({
+                    id: In(data.departmentIds)
+                });
+                
+                if (departments.length !== data.departmentIds.length) {
+                    throw new Error('Some department IDs are invalid');
+                }
+                
+                plan.departments = departments;
+                await this.planRepository.save(plan);
+            }
 
+            return plan;
         } catch (error) {
             throw error;
         }
@@ -139,10 +173,25 @@ class PerformanceService {
 
     public async getDepartmentPlans(departmentId: number): Promise<PerformancePlan[]> {
         try {
-            return await this.planRepository.find({
-                where: { departmentId },
-                order: { createdAt: 'DESC' }
-            });
+            // Lấy cả kế hoạch của phòng ban cụ thể và kế hoạch toàn công ty
+            const plans = await this.planRepository
+                .createQueryBuilder("plan")
+                .leftJoinAndSelect("plan.departments", "department")
+                .leftJoinAndSelect("plan.creator", "creator")
+                .where("plan.isCompanyWide = :isCompanyWide", { isCompanyWide: true })
+                .orWhere(qb => {
+                    const subQuery = qb
+                        .subQuery()
+                        .select("pd.plan_id")
+                        .from("performance_plan_departments", "pd")
+                        .where("pd.department_id = :departmentId", { departmentId })
+                        .getQuery();
+                    return "plan.id IN " + subQuery;
+                })
+                .orderBy("plan.createdAt", "DESC")
+                .getMany();
+                
+            return plans;
         } catch (error) {
             throw error;
         }
@@ -152,7 +201,7 @@ class PerformanceService {
         try {
             // Fetch plans from all departments with department information
             return await this.planRepository.find({
-                relations: ['department', 'creator'],
+                relations: ['departments', 'creator'],
                 order: { createdAt: 'DESC' }
             });
         } catch (error) {
@@ -160,15 +209,58 @@ class PerformanceService {
         }
     }
 
-    public async getActivePlan(departmentId: number): Promise<PerformancePlan | null> {
+    public async getCompanyWidePlans(): Promise<PerformancePlan[]> {
         try {
-            return await this.planRepository.findOne({
-                where: {
-                    departmentId,
-                    status: PlanStatus.ACTIVE,
-                    endDate: Between(new Date(), new Date(new Date().setFullYear(new Date().getFullYear() + 1)))
-                }
+            return await this.planRepository.find({
+                where: { isCompanyWide: true },
+                relations: ['creator'],
+                order: { createdAt: 'DESC' }
             });
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    public async getActivePlan(departmentId?: number): Promise<PerformancePlan | null> {
+        try {
+            // Nếu có departmentId, tìm kế hoạch cho phòng ban đó hoặc kế hoạch toàn công ty
+            if (departmentId) {
+                return await this.planRepository
+                    .createQueryBuilder("plan")
+                    .leftJoinAndSelect("plan.departments", "department")
+                    .where("plan.isCompanyWide = :isCompanyWide", { isCompanyWide: true })
+                    .andWhere("plan.status = :status", { status: PlanStatus.ACTIVE })
+                    .andWhere("plan.endDate >= :now", { now: new Date() })
+                    .andWhere("plan.endDate <= :maxDate", { 
+                        maxDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)) 
+                    })
+                    .orWhere(qb => {
+                        const subQuery = qb
+                            .subQuery()
+                            .select("pd.plan_id")
+                            .from("performance_plan_departments", "pd")
+                            .where("pd.department_id = :departmentId", { departmentId })
+                            .getQuery();
+                        return "plan.id IN " + subQuery;
+                    })
+                    .andWhere("plan.status = :status", { status: PlanStatus.ACTIVE })
+                    .andWhere("plan.endDate >= :now", { now: new Date() })
+                    .andWhere("plan.endDate <= :maxDate", { 
+                        maxDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)) 
+                    })
+                    .orderBy("plan.createdAt", "DESC")
+                    .getOne();
+            } 
+            // Nếu không có departmentId, chỉ tìm kế hoạch toàn công ty
+            else {
+                return await this.planRepository.findOne({
+                    where: {
+                        isCompanyWide: true,
+                        status: PlanStatus.ACTIVE,
+                        endDate: Between(new Date(), new Date(new Date().setFullYear(new Date().getFullYear() + 1)))
+                    }
+                });
+            }
         } catch (error) {
             throw error;
         }
@@ -191,19 +283,26 @@ class PerformanceService {
         planId: number
     ): Promise<PerformanceReview[]> {
         try {
-            // Get all employees in the department
-            const employees = await this.userRepository.find({
-                where: { departmentId }
-            });
-
-            return await this.reviewRepository.find({
+            const reviews = await this.reviewRepository.find({
                 where: {
-                    planId,
-                    employeeId: In(employees.map(e => e.id))
+                    employee: { departmentId },
+                    planId
                 },
-                relations: ['employee', 'reviewer'],
-                order: { employeeId: 'ASC' }
+                relations: ['employee', 'reviewer', 'plan']
             });
+            return reviews;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    public async getAllReviewsForPlan(planId: number): Promise<PerformanceReview[]> {
+        try {
+            const reviews = await this.reviewRepository.find({
+                where: { planId },
+                relations: ['employee', 'reviewer', 'plan']
+            });
+            return reviews;
         } catch (error) {
             throw error;
         }
@@ -255,14 +354,28 @@ class PerformanceService {
 
     public async deletePlan(id: number): Promise<boolean> {
         try {
+            // Kiểm tra kế hoạch có tồn tại không
             const plan = await this.planRepository.findOneBy({ id });
             if (!plan) {
-                throw new Error('Performance plan not found');
+                console.log(`Performance plan with ID ${id} not found`);
+                return false; // Thay vì ném lỗi, trả về false để controller xử lý
             }
 
+            // Lấy tất cả reviews liên quan đến plan này
+            const reviews = await this.reviewRepository.find({
+                where: { planId: id }
+            });
+
+            // Xóa tất cả reviews liên quan trước
+            if (reviews.length > 0) {
+                await this.reviewRepository.delete({ planId: id });
+            }
+
+            // Sau đó xóa plan
             const result = await this.planRepository.delete(id);
             return result.affected === 1;
         } catch (error) {
+            console.error(`Error deleting performance plan with ID ${id}:`, error);
             throw error;
         }
     }
@@ -285,7 +398,14 @@ class PerformanceService {
         try {
             return await this.reviewRepository.findOne({
                 where: { id: reviewId },
-                relations: ['plan', 'employee', 'reviewer', 'employee.department'],
+                relations: [
+                    'plan', 
+                    'employee', 
+                    'reviewer', 
+                    'employee.department', 
+                    'employee.user',
+                    'reviewer.department'
+                ],
             });
         } catch (error) {
             console.error('Error fetching review details:', error);

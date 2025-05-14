@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { performanceService } from '../services/PerformanceService';
-import { PlanStatus } from '../entities/performance/PerformancePlan';
-import { ReviewStatus } from '../entities/performance/PerformanceReview';
+import { PlanStatus } from '../entities/performance/Performance';
+import { ReviewStatus } from '../entities/performance/Performance';
 import { RoleType } from '../entities/auth/Role';
 
 class PerformanceController {
@@ -26,7 +26,7 @@ class PerformanceController {
                 return;
             }
 
-            const { title, description, startDate, endDate, criteria, departmentId } = req.body;
+            const { title, description, startDate, endDate, criteria, departmentIds, isCompanyWide } = req.body;
 
             // Validate required fields
             if (!title || !description || !startDate || !endDate || !criteria) {
@@ -37,21 +37,32 @@ class PerformanceController {
                 return;
             }
 
-            // Determine which department ID to use:
-            // If user is department head, use their department
-            // If user is HR/Admin and departmentId is provided, use that
-            let planDepartmentId: number;
-
-            if (req.user?.roleType === RoleType.DEPARTMENT_HEAD) {
-                planDepartmentId = req.user.departmentId!;
-            } else if (departmentId) {
-                planDepartmentId = departmentId;
-            } else {
-                res.status(400).json({
+            // Kiểm tra quyền tạo kế hoạch toàn công ty (chỉ HR hoặc System Admin)
+            if (isCompanyWide && req.user?.roleType !== RoleType.HR_STAFF && req.user?.roleType !== RoleType.SYSTEM_ADMIN) {
+                res.status(403).json({
                     success: false,
-                    message: 'Department ID is required for HR staff and system admins'
+                    message: 'Only HR staff or system admin can create company-wide plans'
                 });
                 return;
+            }
+
+            // Xử lý departmentIds
+            let planDepartmentIds: number[] = [];
+
+            if (!isCompanyWide) {
+                if (req.user?.roleType === RoleType.DEPARTMENT_HEAD) {
+                    // Nếu là manager, chỉ có thể tạo cho phòng ban của mình
+                    planDepartmentIds = [req.user.departmentId!];
+                } else if (departmentIds && departmentIds.length > 0) {
+                    // Nếu là admin/HR và có departmentIds, sử dụng chúng
+                    planDepartmentIds = departmentIds;
+                } else {
+                    res.status(400).json({
+                        success: false,
+                        message: 'At least one department ID is required for non-company-wide plans'
+                    });
+                    return;
+                }
             }
 
             const plan = await performanceService.createPlan({
@@ -59,9 +70,11 @@ class PerformanceController {
                 description,
                 startDate: new Date(startDate),
                 endDate: new Date(endDate),
-                departmentId: planDepartmentId,
+                departmentIds: planDepartmentIds.length > 0 ? planDepartmentIds : undefined,
                 createdBy: req.user!.userId,
-                criteria
+                isCompanyWide: isCompanyWide || false,
+                criteria,
+                status: PlanStatus.ACTIVE
             });
 
             res.status(201).json({
@@ -74,7 +87,10 @@ class PerformanceController {
             console.error('Error creating performance plan:', error);
 
             if (error.message === 'End date must be after start date' ||
-                error.message === 'Criteria weights must sum to 100') {
+                error.message === 'Criteria weights must sum to 100' ||
+                error.message === 'Company-wide plans cannot have department IDs' ||
+                error.message === 'At least one department ID is required for non-company-wide plans' ||
+                error.message === 'Some department IDs are invalid') {
                 res.status(400).json({
                     success: false,
                     message: error.message
@@ -152,6 +168,23 @@ class PerformanceController {
                 return;
             }
 
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error'
+            });
+        }
+    }
+
+    public async getCompanyWidePlans(req: Request, res: Response): Promise<void> {
+        try {
+            const plans = await performanceService.getCompanyWidePlans();
+
+            res.status(200).json({
+                success: true,
+                data: plans
+            });
+        } catch (error) {
+            console.error('Error getting company-wide plans:', error);
             res.status(500).json({
                 success: false,
                 message: 'Internal server error'
@@ -250,6 +283,19 @@ class PerformanceController {
                 return;
             }
             
+            // Debug: Log thông tin người dùng và đánh giá
+            console.log('User info:', {
+                userId: req.user?.userId, 
+                roleType: req.user?.roleType,
+                departmentId: req.user?.departmentId
+            });
+            console.log('Review info:', {
+                reviewId: review.id,
+                employeeId: review.employeeId, 
+                employeeDeptId: review.employee?.departmentId,
+                employee: review.employee
+            });
+            
             // Kiểm tra quyền truy cập:
             // - Nếu là nhân viên, chỉ được xem đánh giá của chính mình
             // - Nếu là trưởng phòng, chỉ được xem đánh giá của nhân viên trong phòng
@@ -258,6 +304,14 @@ class PerformanceController {
             const isManager = req.user?.roleType === RoleType.DEPARTMENT_HEAD;
             const isAdmin = req.user?.roleType === RoleType.SYSTEM_ADMIN || req.user?.roleType === RoleType.HR_STAFF;
             const isSameDepartment = req.user?.departmentId === review.employee?.departmentId;
+            
+            console.log('Access check:', {
+                isOwnReview,
+                isManager, 
+                isAdmin, 
+                isSameDepartment,
+                condition: !isOwnReview && !isAdmin && !(isManager && isSameDepartment)
+            });
             
             if (!isOwnReview && !isAdmin && !(isManager && isSameDepartment)) {
                 res.status(403).json({
@@ -283,24 +337,48 @@ class PerformanceController {
 
     public async getDepartmentReviews(req: Request, res: Response): Promise<void> {
         try {
-            // Verify user is department manager
-            if (!req.user?.departmentId || req.user.roleType !== RoleType.DEPARTMENT_HEAD) {
-                res.status(403).json({
+            const planId = parseInt(req.params.planId);
+            
+            if (isNaN(planId)) {
+                res.status(400).json({
                     success: false,
-                    message: 'Only department managers can view all department reviews'
+                    message: 'Invalid plan ID'
                 });
                 return;
             }
-
-            const planId = parseInt(req.params.planId);
-            const reviews = await performanceService.getDepartmentReviews(
-                req.user.departmentId,
-                planId
-            );
-
-            res.status(200).json({
-                success: true,
-                data: reviews
+            
+            // Check if user has appropriate permissions
+            const isAdmin = req.user?.roleType === RoleType.SYSTEM_ADMIN || req.user?.roleType === RoleType.HR_STAFF;
+            const isDepartmentHead = req.user?.roleType === RoleType.DEPARTMENT_HEAD;
+            
+            // Admin can view all departments' reviews
+            if (isAdmin) {
+                // Cho phép quản trị viên xem tất cả đánh giá của kế hoạch
+                const reviews = await performanceService.getAllReviewsForPlan(planId);
+                
+                res.status(200).json({
+                    success: true,
+                    data: reviews
+                });
+                return;
+            } else if (isDepartmentHead && req.user?.departmentId) {
+                // Trưởng phòng chỉ được xem đánh giá của phòng mình
+                const reviews = await performanceService.getDepartmentReviews(
+                    req.user.departmentId,
+                    planId
+                );
+                
+                res.status(200).json({
+                    success: true,
+                    data: reviews
+                });
+                return;
+            }
+            
+            // Không phải admin hoặc trưởng phòng
+            res.status(403).json({
+                success: false,
+                message: 'Insufficient role permissions'
             });
 
         } catch (error) {
@@ -345,6 +423,16 @@ class PerformanceController {
             }
 
             const planId = parseInt(req.params.id);
+            
+            // Kiểm tra tính hợp lệ của planId
+            if (isNaN(planId) || planId <= 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Invalid plan ID'
+                });
+                return;
+            }
+            
             const result = await performanceService.deletePlan(planId);
 
             if (result) {
@@ -390,6 +478,36 @@ class PerformanceController {
             }
 
             const reviewId = parseInt(req.params.id);
+            
+            // Validate reviewId
+            if (isNaN(reviewId)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Invalid review ID'
+                });
+                return;
+            }
+            
+            // Kiểm tra quyền truy cập trước khi xóa
+            const review = await performanceService.getReviewDetails(reviewId);
+            
+            if (!review) {
+                res.status(404).json({
+                    success: false,
+                    message: 'Performance review not found'
+                });
+                return;
+            }
+            
+            // Nếu là trưởng phòng, chỉ được xóa đánh giá của nhân viên trong phòng mình
+            if (req.user?.roleType === RoleType.DEPARTMENT_HEAD && req.user?.departmentId !== review.employee?.departmentId) {
+                res.status(403).json({
+                    success: false,
+                    message: 'You do not have permission to delete this review'
+                });
+                return;
+            }
+            
             const result = await performanceService.deleteReview(reviewId);
 
             if (result) {

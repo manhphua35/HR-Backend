@@ -9,8 +9,7 @@ import { Leave, LeaveStatus, LeaveType } from '../entities/leave/Leave';
 import { DepartmentReport } from '../entities/report/DepartmentReport';
 import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance';
 import { Payroll, ComponentType } from '../entities/payroll/Payroll';
-import { PerformancePlan, PlanStatus } from '../entities/performance/PerformancePlan';
-import { PerformanceReview, ReviewStatus } from '../entities/performance/PerformanceReview';
+import { PerformancePlan, PlanStatus, PerformanceReview, ReviewStatus } from '../entities/performance/Performance';
 import bcrypt from 'bcrypt';
 import { FindOneOptions, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 
@@ -653,8 +652,7 @@ export class SeedService {
                     description: `Kế hoạch đánh giá hiệu suất nhân viên ${dept.name} năm ${currentYear}`,
                     startDate: new Date(currentYear, 0, 1), // Jan 1st
                     endDate: new Date(currentYear, 11, 31), // Dec 31st
-                    department: dept,
-                    departmentId: dept.id,
+                    departments: [dept], // Sử dụng departments thay vì departmentId
                     createdBy: head.id,
                     creator: head,
                     status: PlanStatus.ACTIVE,
@@ -697,9 +695,13 @@ export class SeedService {
         const reviews: DeepPartial<PerformanceReview>[] = [];
 
         for (const plan of savedPlans) {
+            // Lấy department từ plan.departments[0]
+            const dept = plan.departments?.[0];
+            if (!dept) continue;
+
             // Get employees of this department
-            const deptEmployees = employees.filter(e => e.departmentId === plan.departmentId);
-            const head = departmentHeads.find(h => h.departmentId === plan.departmentId);
+            const deptEmployees = employees.filter(e => e.departmentId === dept.id);
+            const head = departmentHeads.find(h => h.departmentId === dept.id);
 
             if (head && deptEmployees.length > 0) {
                 for (const employee of deptEmployees) {

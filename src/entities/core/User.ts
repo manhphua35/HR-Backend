@@ -4,7 +4,7 @@ import { Position } from "./Position";
 import { Role } from "../auth/Role";
 import { Leave } from "../leave/Leave";
 import { Payroll } from "../payroll/Payroll";
-import { PerformanceReview } from "../performance/PerformanceReview";
+import { PerformanceReview } from "../performance/Performance";
 
 @Entity("users")
 export class User {
