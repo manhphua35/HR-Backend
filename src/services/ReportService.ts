@@ -502,7 +502,7 @@ class ReportService {
         
         const pendingLeaves = leaves.filter(leave => leave.status === LeaveStatus.PENDING).length;
 
-        // Lấy payroll gần nhất
+        // Lấy payroll đã tính toán
         const payroll = await this.payrollRepo.findOne({
             where: {
                 user: { id: employee.id },
@@ -510,6 +510,81 @@ class ReportService {
                 year
             }
         });
+
+        // Xử lý dữ liệu lương chi tiết như trong PayrollService
+        let payrollData = null;
+        if (payroll) {
+            // Sử dụng các giá trị đã được tính trong payroll
+            payrollData = {
+                month: payroll.month,
+                year: payroll.year,
+                basicSalary: payroll.baseSalary,
+                totalAllowance: payroll.totalAllowance,
+                totalDeduction: payroll.totalDeduction,
+                totalBenefit: payroll.totalBenefit,
+                bonus: payroll.bonus,
+                tax: payroll.tax,
+                netSalary: payroll.netSalary,
+                leaveDeductionAmount: payroll.leaveDeductionAmount,
+                latePenaltyAmount: payroll.latePenaltyAmount,
+                isFinalized: payroll.isFinalized
+            };
+        } else if (employee.baseSalary !== null && employee.baseSalary !== undefined) {
+            // Nếu không có payroll, tính toán tạm thời như PayrollService
+            const baseSalaryForCalc = parseFloat(String(employee.baseSalary)) || 0;
+            
+            // Tính khấu trừ nghỉ phép
+            const approvedLeavesOverlappingMonth = leaves.filter(leave => 
+                leave.status === LeaveStatus.APPROVED &&
+                leave.startDate && leave.endDate &&
+                new Date(leave.startDate) <= endDate &&
+                new Date(leave.endDate) >= startDate
+            );
+            
+            let calculatedLeaveDaysInMonth = 0;
+            for (const leave of approvedLeavesOverlappingMonth) {
+                const effectiveLeaveStart = new Date(leave.startDate) > startDate ? new Date(leave.startDate) : startDate;
+                const effectiveLeaveEnd = new Date(leave.endDate) < endDate ? new Date(leave.endDate) : endDate;
+
+                if (effectiveLeaveStart <= effectiveLeaveEnd) {
+                    const diffTime = Math.abs(effectiveLeaveEnd.getTime() - effectiveLeaveStart.getTime());
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                    calculatedLeaveDaysInMonth += diffDays;
+                }
+            }
+            
+            const leaveDeductionAmount = calculatedLeaveDaysInMonth * 0.03 * baseSalaryForCalc;
+            
+            // Tính phạt đi muộn
+            const latePenaltyAmount = lateDays * 100000;
+            
+            // Tính tổng khấu trừ
+            const totalDeduction = leaveDeductionAmount + latePenaltyAmount;
+            
+            // Tính thu nhập trước thuế
+            const incomeBeforeTax = baseSalaryForCalc - totalDeduction;
+            
+            // Tính thuế
+            const tax = Math.max(0, incomeBeforeTax * 0.1);
+            
+            // Tính lương thực nhận
+            const netSalary = incomeBeforeTax - tax;
+            
+            payrollData = {
+                month,
+                year,
+                basicSalary: baseSalaryForCalc,
+                totalAllowance: 0,
+                totalDeduction,
+                totalBenefit: 0,
+                bonus: 0,
+                tax,
+                netSalary,
+                leaveDeductionAmount,
+                latePenaltyAmount,
+                isFinalized: false
+            };
+        }
 
         // Lấy khóa đào tạo đang diễn ra
         const trainings = await this.trainingRepo.find({
@@ -577,14 +652,7 @@ class ReportService {
                 remaining: employee.remainingLeaves || 0,
                 pending: pendingLeaves
             },
-            payroll: payroll ? {
-                month: payroll.month,
-                year: payroll.year,
-                basicSalary: payroll.baseSalary,
-                totalAllowance: payroll.totalAllowance,
-                totalDeduction: payroll.totalDeduction,
-                netSalary: payroll.netSalary
-            } : null,
+            payroll: payrollData,
             training: mappedTrainings,
             performance: performanceData
         };

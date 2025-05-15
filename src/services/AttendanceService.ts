@@ -2,7 +2,7 @@ import { Repository, FindManyOptions, Between, IsNull, Not } from 'typeorm'; // 
 import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance';
 import { User } from '../entities/core/User';
 import { AppDataSource } from '../config/data-source'; // Import AppDataSource
-import { Leave } from '../entities/leave/Leave'; // Import Leave entity
+import { Leave, LeaveStatus } from '../entities/leave/Leave'; // Import Leave entity
 import { RoleType } from '../entities/auth/Role'; // Import RoleType
 
 // Định nghĩa kiểu cho user đã xác thực từ token
@@ -100,232 +100,231 @@ export class AttendanceService {
 
     // Get attendances with permission checks using AuthenticatedUser
     async getAttendances(
-        requestingUser: AuthenticatedUser, // Changed to AuthenticatedUser
+        requestingUser: AuthenticatedUser,
         userId?: string,
         departmentId?: string,
         startDate?: string,
         endDate?: string
     ): Promise<Attendance[]> {
-        const { userId: requestingUserId, roleType, departmentId: managerDepartmentId } = requestingUser;
-
-        const options: FindManyOptions<Attendance> = {
-            relations: ['user', 'user.role', 'user.department', 'leaveRequest'],
-            order: { date: 'DESC', checkInTime: 'ASC' },
-        };
-        const where: any = {};
-
-        // --- Input Parsing ---
-        const targetUserIdNum = userId ? parseInt(userId, 10) : undefined;
-        const targetDepartmentIdNum = departmentId ? parseInt(departmentId, 10) : undefined;
-
-        if (userId && isNaN(targetUserIdNum!)) throw new Error('User ID không hợp lệ.');
-        if (departmentId && isNaN(targetDepartmentIdNum!)) throw new Error('Department ID không hợp lệ.');
-
-        // --- Date range filtering ---
-        if (startDate && endDate) {
-            where.date = Between(startDate, endDate);
-        } else if (startDate) {
-            where.date = Between(startDate, new Date().toISOString().split('T')[0]);
-        }
-
-        // --- Permission-Based Filtering ---
-        if (roleType === RoleType.SYSTEM_ADMIN || roleType === RoleType.HR_STAFF) {
-            // Admin/HR can view all, apply filters if provided
-            if (targetUserIdNum) where.user = { id: targetUserIdNum };
-            if (targetDepartmentIdNum) {
-                if (where.user?.id) { // Combine filters if both exist
-                    where.user.department = { id: targetDepartmentIdNum };
-                } else {
-                    where.user = { department: { id: targetDepartmentIdNum } };
+        try {
+            // Xây dựng câu query chung
+            const queryBuilder = this.attendanceRepository
+                .createQueryBuilder('attendance')
+                .leftJoinAndSelect('attendance.user', 'user')
+                .leftJoinAndSelect('user.department', 'department')
+                .leftJoinAndSelect('attendance.leaveRequest', 'leaveRequest');
+                
+            // Điều kiện lọc theo userId, nếu được chỉ định
+            if (userId) {
+                queryBuilder.andWhere('user.id = :userId', { userId: parseInt(userId, 10) });
+            } 
+            // Điều kiện lọc theo departmentId, nếu được chỉ định
+            else if (departmentId) {
+                queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId: parseInt(departmentId, 10) });
+            }
+            // Nếu không có userId hoặc departmentId, áp dụng phân quyền
+            else {
+                // Người dùng có vai trò EMPLOYEE chỉ xem dữ liệu của chính mình
+                if (requestingUser.roleType === RoleType.EMPLOYEE) {
+                    queryBuilder.andWhere('user.id = :userId', { userId: requestingUser.userId });
+                } 
+                // Người dùng là DEPARTMENT_HEAD chỉ xem dữ liệu của phòng ban mình
+                else if (requestingUser.roleType === RoleType.DEPARTMENT_HEAD && requestingUser.departmentId) {
+                    queryBuilder.andWhere('user.departmentId = :departmentId', { departmentId: requestingUser.departmentId });
                 }
+                // HR_STAFF và SYSTEM_ADMIN có thể xem tất cả dữ liệu
             }
-        } else if (roleType === RoleType.DEPARTMENT_HEAD) {
-            if (!managerDepartmentId) throw new Error('Trưởng phòng không thuộc phòng ban nào.');
-
-            where.user = { department: { id: managerDepartmentId } }; // Base filter: own department
-
-            if (targetUserIdNum) {
-                // Ensure the target user is actually in the manager's department
-                if (!await this.userRepository.exists({ where: { id: targetUserIdNum, department: { id: managerDepartmentId } } })) {
-                    return []; // User not in manager's department
-                }
-                where.user.id = targetUserIdNum; // Add specific user filter
+            
+            // Lọc theo thời gian nếu có
+            if (startDate) {
+                queryBuilder.andWhere('attendance.date >= :startDate', { startDate });
             }
-            // If departmentId is provided, it must match the manager's department (already handled by base filter)
-            if (targetDepartmentIdNum && targetDepartmentIdNum !== managerDepartmentId) {
-                return []; // Trying to query outside own department
+            if (endDate) {
+                queryBuilder.andWhere('attendance.date <= :endDate', { endDate });
             }
-        } else { // Employee
-            where.user = { id: requestingUserId }; // Can only view their own
-            // If they try to filter by another userId or departmentId, deny access (return empty)
-            if ((targetUserIdNum && targetUserIdNum !== requestingUserId) || targetDepartmentIdNum) {
-                return [];
-            }
+            
+            // Thực hiện truy vấn và trả về kết quả
+            return await queryBuilder
+                .orderBy('attendance.date', 'DESC')
+                .addOrderBy('user.fullName', 'ASC')
+                .getMany();
+                
+        } catch (error) {
+            console.error('Error in getAttendances:', error);
+            throw error;
         }
-
-        options.where = where;
-        return this.attendanceRepository.find(options);
     }
 
     // Get single attendance by ID with permission check using AuthenticatedUser
-    async getAttendanceById(requestingUser: AuthenticatedUser, id: string): Promise<Attendance | null> { // Changed to AuthenticatedUser
-        const attendance = await this.attendanceRepository.findOne({
-            where: { id },
-            relations: ['user', 'user.role', 'user.department', 'leaveRequest'], // Ensure department is loaded for user
-        });
-
-        if (!attendance) return null;
-
-        // Check permission based on the record's user/department
-        const canView = await this.checkViewPermission(requestingUser, attendance.user?.id, attendance.user?.department?.id); // Use optional chaining
-
-        if (!canView) throw new Error('Forbidden');
-
-        return attendance;
+    async getAttendanceById(requestingUser: AuthenticatedUser, id: string): Promise<Attendance | null> {
+        try {
+            const attendance = await this.attendanceRepository.findOne({
+                where: { id },
+                relations: ['user', 'user.department', 'leaveRequest']
+            });
+            
+            if (!attendance) return null;
+            
+            // Kiểm tra quyền truy cập
+            // Nếu là EMPLOYEE, chỉ cho phép xem dữ liệu của bản thân
+            if (requestingUser.roleType === RoleType.EMPLOYEE && attendance.user.id !== requestingUser.userId) {
+                throw new Error('Forbidden');
+            }
+            
+            // Nếu là DEPARTMENT_HEAD, chỉ cho phép xem dữ liệu của phòng ban mình
+            if (requestingUser.roleType === RoleType.DEPARTMENT_HEAD && 
+                attendance.user.departmentId !== requestingUser.departmentId) {
+                throw new Error('Forbidden');
+            }
+            
+            return attendance;
+        } catch (error) {
+            console.error(`Error in getAttendanceById: ${error}`);
+            throw error;
+        }
     }
 
      // Create or Update Attendance Record (e.g., for manual entry or corrections by HR/Admin)
      // This method might not need requestingUser if permissions are checked in controller or a dedicated method
-     async createOrUpdateAttendance(attendanceData: Partial<Attendance> & { userId: string }): Promise<Attendance> {
-         // Permission should ideally be checked before calling this method (e.g., in controller)
-         // based on who is allowed to create/update records for others.
-
-         const { userId, date, ...restData } = attendanceData;
-         const userIdNum = parseInt(userId, 10);
-
-         if (isNaN(userIdNum) || !date) {
-             throw new Error('User ID và Ngày là bắt buộc và User ID phải là số.');
-         }
-
-         const user = await this.userRepository.findOneBy({ id: userIdNum });
-         if (!user) throw new Error(`Không tìm thấy người dùng với ID ${userIdNum}`);
-
-         let attendance = await this.attendanceRepository.findOne({ where: { user: { id: userIdNum }, date } });
-
-         if (attendance) { // Update existing record
-            // Consider if status should be automatically updated based on times
-            Object.assign(attendance, restData);
-             if (attendance.checkInTime && attendance.checkOutTime) {
-                attendance.workHours = this.calculateWorkHours(attendance.checkInTime, attendance.checkOutTime);
-            } else {
-                 attendance.workHours = null; // Reset if check-in or check-out is removed
-            }
-             // If status is manually set to leave, clear times and set workHours
-             if (restData.status === AttendanceStatus.LEAVE) {
-                 attendance.checkInTime = null;
-                 attendance.checkOutTime = null;
-                 attendance.workHours = 0; // Or null
-                 // Link leave request if provided
-                 if (restData.leaveRequest) attendance.leaveRequest = restData.leaveRequest;
-             } else if (restData.status === AttendanceStatus.PRESENT && attendance.checkInTime && !attendance.checkOutTime) {
-                 // If marked present manually, ensure work hours are null until checkout
-                 attendance.workHours = null;
-                 attendance.leaveRequest = null; // Unlink leave if marked present
-             } else if (restData.status === AttendanceStatus.ABSENT) {
-                 attendance.checkInTime = null;
-                 attendance.checkOutTime = null;
-                 attendance.workHours = 0; // Or null
-                 attendance.leaveRequest = null;
+     async createOrUpdateAttendance(attendanceData: any): Promise<Attendance> {
+         try {
+             // Tạo đối tượng Attendance mới hoặc cập nhật
+             const attendance = new Attendance();
+             
+             // Gán các giá trị từ dữ liệu gửi lên
+             if (attendanceData.userId) {
+                 const user = await this.userRepository.findOneBy({ id: parseInt(attendanceData.userId, 10) });
+                 if (!user) {
+                     throw new Error('User not found');
+                 }
+                 attendance.user = user;
              }
-
-        } else { // Create new record
-            attendance = this.attendanceRepository.create({
-                ...restData,
-                user: user,
-                date: date,
-                 workHours: (restData.checkInTime && restData.checkOutTime)
-                 ? this.calculateWorkHours(restData.checkInTime, restData.checkOutTime)
-                 : (restData.status === AttendanceStatus.LEAVE ? 0 : null), // Set workHours for leave on creation
-                 // Ensure status matches times if possible, default to ABSENT if no info
-                 status: restData.status ?? (restData.checkInTime ? AttendanceStatus.PRESENT : AttendanceStatus.ABSENT),
-            });
-             // If created as leave, clear times
-             if (attendance.status === AttendanceStatus.LEAVE) {
-                 attendance.checkInTime = null;
-                 attendance.checkOutTime = null;
+             
+             // Kiểm tra và gán các giá trị với kiểu dữ liệu phù hợp
+             if (attendanceData.date) {
+                 attendance.date = attendanceData.date;
+             } else {
+                 throw new Error('Date is required');
              }
-        }
-
-        return this.attendanceRepository.save(attendance);
-    }
-
-     // Update an existing attendance record with permission check using AuthenticatedUser
-    async updateAttendance(requestingUser: AuthenticatedUser, id: string, attendanceData: Partial<Attendance>): Promise<Attendance | null> { // Changed to AuthenticatedUser
-        const attendance = await this.attendanceRepository.findOne({
-             where: { id },
-             relations: ['user', 'user.department'] // Ensure user and department are loaded
-            });
-
-        if (!attendance) return null; // Not found
-
-        const canModify = await this.checkModifyPermission(requestingUser, attendance);
-        if (!canModify) throw new Error('Forbidden');
-
-        // Prevent changing the user or date via this method
-        delete attendanceData.user;
-        delete attendanceData.date;
-        delete attendanceData.id; // Cannot change ID
-
-        // Prevent employee from changing status or times directly? Only allow notes?
-        if (requestingUser.roleType === RoleType.EMPLOYEE && requestingUser.userId === attendance.user?.id) {
-             // Allow only notes update for employees?
-             const allowedUpdates: Partial<Attendance> = {};
-             if (attendanceData.notes !== undefined) {
-                 allowedUpdates.notes = attendanceData.notes;
+             
+             attendance.checkInTime = attendanceData.checkInTime || null;
+             attendance.checkOutTime = attendanceData.checkOutTime || null;
+             
+             if (attendanceData.status) {
+                 attendance.status = attendanceData.status;
+             } else {
+                 attendance.status = AttendanceStatus.ABSENT; // Giá trị mặc định
              }
-             // Maybe allow correcting check-in/out within a short timeframe? (More complex)
-
-             attendanceData = allowedUpdates; // Restrict updates
-             if (Object.keys(attendanceData).length === 0) return attendance; // No allowed fields to update
-        }
-
-
-        Object.assign(attendance, attendanceData);
-
-         // Recalculate work hours if checkIn and checkOut times are updated
-        if (attendanceData.checkInTime !== undefined || attendanceData.checkOutTime !== undefined) {
+             
+             attendance.notes = attendanceData.notes || null;
+             
+             // Tính toán số giờ làm việc nếu có check-in và check-out
              if (attendance.checkInTime && attendance.checkOutTime) {
                  attendance.workHours = this.calculateWorkHours(attendance.checkInTime, attendance.checkOutTime);
-             } else {
-                 attendance.workHours = null; // Reset if one is missing
              }
-        }
-         // If status is manually set to leave, clear times and set workHours
-         if (attendanceData.status === AttendanceStatus.LEAVE) {
-             attendance.checkInTime = null;
-             attendance.checkOutTime = null;
-             attendance.workHours = 0; // Or null
-             // Link leave request if provided
-             if (attendanceData.leaveRequest) attendance.leaveRequest = attendanceData.leaveRequest;
-         } else if (attendanceData.status === AttendanceStatus.ABSENT) {
-             attendance.checkInTime = null;
-             attendance.checkOutTime = null;
-             attendance.workHours = 0; // Or null
-             attendance.leaveRequest = null;
-         } else if (attendanceData.status === AttendanceStatus.PRESENT) {
-             // If marked present, ensure leave request is unlinked
-             attendance.leaveRequest = null;
+             
+             // Lưu vào database
+             return await this.attendanceRepository.save(attendance);
+         } catch (error) {
+             console.error('Error in createOrUpdateAttendance:', error);
+             throw error;
          }
+     }
 
-
-        return this.attendanceRepository.save(attendance);
+     // Update an existing attendance record with permission check using AuthenticatedUser
+    async updateAttendance(requestingUser: AuthenticatedUser, id: string, attendanceData: any): Promise<Attendance | null> {
+        try {
+            // Tìm bản ghi chấm công cần cập nhật
+            const attendance = await this.attendanceRepository.findOne({
+                where: { id },
+                relations: ['user', 'user.department']
+            });
+            
+            if (!attendance) return null;
+            
+            // Kiểm tra quyền truy cập/cập nhật
+            if (requestingUser.roleType === RoleType.EMPLOYEE) {
+                // Nhân viên chỉ được cập nhật bản ghi của mình và chỉ được sửa ghi chú
+                if (attendance.user.id !== requestingUser.userId) {
+                    throw new Error('Forbidden');
+                }
+                
+                // Nhân viên chỉ được phép cập nhật ghi chú
+                if (Object.keys(attendanceData).some(key => key !== 'notes')) {
+                    throw new Error('Forbidden: Employees can only update notes');
+                }
+                
+                // Gán ghi chú với kiểm tra null
+                attendance.notes = attendanceData.notes || null;
+            } else if (requestingUser.roleType === RoleType.DEPARTMENT_HEAD) {
+                // Trưởng phòng chỉ được cập nhật bản ghi của nhân viên trong phòng
+                if (attendance.user.departmentId !== requestingUser.departmentId) {
+                    throw new Error('Forbidden');
+                }
+                
+                // Cập nhật các trường được phép
+                if (attendanceData.checkInTime !== undefined) attendance.checkInTime = attendanceData.checkInTime || null;
+                if (attendanceData.checkOutTime !== undefined) attendance.checkOutTime = attendanceData.checkOutTime || null;
+                if (attendanceData.status !== undefined) attendance.status = attendanceData.status;
+                if (attendanceData.notes !== undefined) attendance.notes = attendanceData.notes || null;
+                
+                // Tính lại giờ làm việc nếu có cả check-in và check-out
+                if (attendance.checkInTime && attendance.checkOutTime) {
+                    attendance.workHours = this.calculateWorkHours(attendance.checkInTime, attendance.checkOutTime);
+                }
+            } else {
+                // Admin và HR có toàn quyền cập nhật
+                if (attendanceData.checkInTime !== undefined) attendance.checkInTime = attendanceData.checkInTime || null;
+                if (attendanceData.checkOutTime !== undefined) attendance.checkOutTime = attendanceData.checkOutTime || null;
+                if (attendanceData.status !== undefined) attendance.status = attendanceData.status;
+                if (attendanceData.notes !== undefined) attendance.notes = attendanceData.notes || null;
+                if (attendanceData.date !== undefined) attendance.date = attendanceData.date;
+                
+                // Tính lại giờ làm việc nếu có cả check-in và check-out
+                if (attendance.checkInTime && attendance.checkOutTime) {
+                    attendance.workHours = this.calculateWorkHours(attendance.checkInTime, attendance.checkOutTime);
+                }
+            }
+            
+            // Lưu vào database
+            return await this.attendanceRepository.save(attendance);
+        } catch (error) {
+            console.error(`Error in updateAttendance: ${error}`);
+            throw error;
+        }
     }
 
 
     // Delete attendance record with permission check using AuthenticatedUser
-    async deleteAttendance(requestingUser: AuthenticatedUser, id: string): Promise<boolean> { // Changed to AuthenticatedUser
-         const attendance = await this.attendanceRepository.findOne({
-             where: { id },
-             relations: ['user', 'user.department'] // Load relations needed for permission check
+    async deleteAttendance(requestingUser: AuthenticatedUser, id: string): Promise<boolean> {
+        try {
+            // Tìm bản ghi chấm công cần xóa
+            const attendance = await this.attendanceRepository.findOne({
+                where: { id },
+                relations: ['user', 'user.department']
             });
-
-        if (!attendance) return false; // Not found
-
-        const canModify = await this.checkModifyPermission(requestingUser, attendance);
-         if (!canModify) throw new Error('Forbidden');
-
-        const deleteResult = await this.attendanceRepository.delete(id);
-        return !!deleteResult.affected && deleteResult.affected > 0;
+            
+            if (!attendance) return false;
+            
+            // Kiểm tra quyền truy cập/xóa
+            if (requestingUser.roleType === RoleType.EMPLOYEE) {
+                // Nhân viên không được xóa bản ghi chấm công
+                throw new Error('Forbidden');
+            } else if (requestingUser.roleType === RoleType.DEPARTMENT_HEAD) {
+                // Trưởng phòng chỉ được xóa bản ghi của nhân viên trong phòng
+                if (attendance.user.departmentId !== requestingUser.departmentId) {
+                    throw new Error('Forbidden');
+                }
+            }
+            // Admin và HR có thể xóa bất kỳ bản ghi nào
+            
+            // Thực hiện xóa
+            await this.attendanceRepository.remove(attendance);
+            return true;
+        } catch (error) {
+            console.error(`Error in deleteAttendance: ${error}`);
+            throw error;
+        }
     }
 
     // --- Check-in/Check-out Logic ---
@@ -425,12 +424,12 @@ export class AttendanceService {
     }
 
      // Mark attendance as Leave - potentially called when a leave request is approved
-     async markAsLeave(userId: number, date: string, leaveRequestId: number): Promise<void> {
+     async markAsLeave(userId: number, date: string, leaveId: number): Promise<void> {
         const user = await this.userRepository.findOneBy({ id: userId });
         if (!user) throw new Error(`Không tìm thấy người dùng với ID ${userId}`);
 
-        const leaveRequest = await this.leaveRepository.findOneBy({ id: leaveRequestId });
-         if (!leaveRequest) throw new Error(`Không tìm thấy đơn nghỉ phép với ID ${leaveRequestId}`);
+        const leaveRequest = await this.leaveRepository.findOneBy({ id: leaveId });
+        if (!leaveRequest) throw new Error(`Không tìm thấy đơn nghỉ phép với ID ${leaveId}`);
 
         let attendance = await this.attendanceRepository.findOne({ where: { user: { id: userId }, date } });
 
@@ -439,8 +438,9 @@ export class AttendanceService {
             attendance.checkInTime = null;
             attendance.checkOutTime = null;
             attendance.workHours = 0; // Or null
+            // Lưu tham chiếu đến đối tượng Leave 
             attendance.leaveRequest = leaveRequest;
-            attendance.notes = `Nghỉ phép - Đơn: ${leaveRequestId}`; // Overwrite notes
+            attendance.notes = `Nghỉ phép - Đơn: ${leaveId}`; // Overwrite notes
         } else { // Create new record marked as leave
             attendance = this.attendanceRepository.create({
                 user: user,
@@ -448,7 +448,7 @@ export class AttendanceService {
                 status: AttendanceStatus.LEAVE,
                 workHours: 0, // Or null
                 leaveRequest: leaveRequest,
-                notes: `Nghỉ phép - Đơn: ${leaveRequestId}`,
+                notes: `Nghỉ phép - Đơn: ${leaveId}`,
             });
         }
         await this.attendanceRepository.save(attendance);
