@@ -403,12 +403,154 @@ class PerformanceService {
                     'employee', 
                     'reviewer', 
                     'employee.department', 
-                    'employee.user',
                     'reviewer.department'
                 ],
             });
         } catch (error) {
             console.error('Error fetching review details:', error);
+            throw error;
+        }
+    }
+
+    public async updatePlan(
+        planId: number,
+        data: {
+            title: string;
+            description: string;
+            startDate: Date;
+            endDate: Date;
+            criteria: any[];
+            departmentIds?: number[];
+            isCompanyWide?: boolean;
+            status?: PlanStatus;
+        }
+    ): Promise<PerformancePlan> {
+        try {
+            // Tìm kế hoạch cần cập nhật
+            const plan = await this.planRepository.findOne({
+                where: { id: planId },
+                relations: ['departments']
+            });
+
+            if (!plan) {
+                throw new Error('Performance plan not found');
+            }
+
+            // Validate dates
+            if (data.startDate > data.endDate) {
+                throw new Error('End date must be after start date');
+            }
+
+            // Validate criteria weights sum to 100
+            const totalWeight = data.criteria.reduce((sum, criterion) => sum + criterion.weight, 0);
+            if (totalWeight !== 100) {
+                throw new Error('Criteria weights must sum to 100');
+            }
+
+            // Validate departmentIds và isCompanyWide
+            if (data.isCompanyWide && data.departmentIds && data.departmentIds.length > 0) {
+                throw new Error('Company-wide plans cannot have department IDs');
+            }
+
+            if (!data.isCompanyWide && (!data.departmentIds || data.departmentIds.length === 0)) {
+                throw new Error('At least one department ID is required for non-company-wide plans');
+            }
+
+            // Cập nhật thông tin kế hoạch
+            plan.title = data.title;
+            plan.description = data.description;
+            plan.startDate = data.startDate;
+            plan.endDate = data.endDate;
+            plan.criteria = data.criteria;
+            plan.isCompanyWide = data.isCompanyWide || false;
+            if (data.status) {
+                plan.status = data.status;
+            }
+
+            // Lưu kế hoạch trước
+            await this.planRepository.save(plan);
+
+            // Cập nhật mối quan hệ với phòng ban nếu không phải kế hoạch toàn công ty
+            if (!data.isCompanyWide && data.departmentIds && data.departmentIds.length > 0) {
+                const departments = await this.departmentRepository.findBy({
+                    id: In(data.departmentIds)
+                });
+
+                if (departments.length !== data.departmentIds.length) {
+                    throw new Error('Some department IDs are invalid');
+                }
+
+                // Cập nhật quan hệ với phòng ban
+                plan.departments = departments;
+                await this.planRepository.save(plan);
+            } else if (data.isCompanyWide) {
+                // Nếu là kế hoạch toàn công ty, xóa quan hệ với phòng ban
+                plan.departments = [];
+                await this.planRepository.save(plan);
+            }
+
+            return plan;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    public async updateReview(
+        reviewId: number,
+        data: {
+            reviewDate: Date;
+            scores: {
+                criteriaId: number;
+                score: number;
+                comment: string;
+            }[];
+            comments?: string;
+            strengths?: string;
+            weaknesses?: string;
+            improvement?: string;
+        }
+    ): Promise<PerformanceReview> {
+        try {
+            // Tìm đánh giá cần cập nhật
+            const review = await this.reviewRepository.findOne({
+                where: { id: reviewId },
+                relations: ['plan']
+            });
+
+            if (!review) {
+                throw new Error('Performance review not found');
+            }
+
+            // Kiểm tra trạng thái đánh giá
+            if (review.status === ReviewStatus.APPROVED) {
+                throw new Error('Cannot modify an approved review');
+            }
+
+            // Tính toán điểm tổng hợp
+            const plan = review.plan;
+            let totalScore = 0;
+
+            for (const scoreItem of data.scores) {
+                const criterion = plan.criteria.find(c => c.id === scoreItem.criteriaId);
+                if (!criterion) {
+                    throw new Error(`Invalid criteria ID: ${scoreItem.criteriaId}`);
+                }
+                totalScore += (scoreItem.score * criterion.weight / 100);
+            }
+
+            // Cập nhật thông tin đánh giá
+            review.reviewDate = data.reviewDate;
+            review.scores = data.scores;
+            review.comments = data.comments || review.comments;
+            review.strengths = data.strengths || review.strengths;
+            review.weaknesses = data.weaknesses || review.weaknesses;
+            review.improvement = data.improvement || review.improvement;
+            review.totalScore = totalScore;
+
+            // Lưu đánh giá
+            await this.reviewRepository.save(review);
+            return review;
+        } catch (error) {
             throw error;
         }
     }

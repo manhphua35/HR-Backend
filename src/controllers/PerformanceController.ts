@@ -539,6 +539,213 @@ class PerformanceController {
             });
         }
     }
+
+    public async updatePlan(req: Request, res: Response): Promise<void> {
+        try {
+            // Verify user is HR staff or system admin
+            const allowedRoles = [RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN];
+            if (!allowedRoles.includes(req.user?.roleType!)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Chỉ HR hoặc quản trị viên mới có quyền cập nhật kế hoạch đánh giá'
+                });
+                return;
+            }
+
+            const planId = parseInt(req.params.id);
+            
+            if (isNaN(planId)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'ID kế hoạch không hợp lệ'
+                });
+                return;
+            }
+            
+            const { title, description, startDate, endDate, criteria, departmentIds, isCompanyWide } = req.body;
+
+            // Validate required fields
+            if (!title || !description || !startDate || !endDate || !criteria) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Thiếu thông tin bắt buộc'
+                });
+                return;
+            }
+
+            // Validate dates
+            if (new Date(startDate) > new Date(endDate)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Ngày kết thúc phải sau ngày bắt đầu'
+                });
+                return;
+            }
+
+            // Validate criteria weights sum to 100
+            const totalWeight = criteria.reduce((sum: number, criterion: {weight: number}) => sum + criterion.weight, 0);
+            if (totalWeight !== 100) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Tổng trọng số tiêu chí phải bằng 100'
+                });
+                return;
+            }
+
+            // Validate departmentIds và isCompanyWide
+            if (isCompanyWide && departmentIds && departmentIds.length > 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Kế hoạch toàn công ty không thể chỉ định phòng ban cụ thể'
+                });
+                return;
+            }
+
+            if (!isCompanyWide && (!departmentIds || departmentIds.length === 0)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Cần chỉ định ít nhất một phòng ban cho kế hoạch không phải toàn công ty'
+                });
+                return;
+            }
+
+            const updatedPlan = await performanceService.updatePlan(planId, {
+                title,
+                description,
+                startDate: new Date(startDate),
+                endDate: new Date(endDate),
+                criteria,
+                departmentIds,
+                isCompanyWide
+            });
+
+            res.status(200).json({
+                success: true,
+                data: updatedPlan,
+                message: 'Cập nhật kế hoạch thành công'
+            });
+
+        } catch (error: any) {
+            console.error('Lỗi cập nhật kế hoạch đánh giá:', error);
+            
+            if (error.message === 'Kế hoạch đánh giá không tồn tại' ||
+                error.message === 'End date must be after start date' ||
+                error.message === 'Criteria weights must sum to 100' ||
+                error.message === 'Company-wide plans cannot have department IDs' ||
+                error.message === 'At least one department ID is required for non-company-wide plans' ||
+                error.message === 'Some department IDs are invalid') {
+                res.status(400).json({
+                    success: false,
+                    message: error.message
+                });
+                return;
+            }
+
+            res.status(500).json({
+                success: false,
+                message: 'Lỗi server'
+            });
+        }
+    }
+
+    public async updateReview(req: Request, res: Response): Promise<void> {
+        try {
+            // Verify user has permission (department manager, HR staff, or system admin)
+            const allowedRoles = [RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN];
+            if (!allowedRoles.includes(req.user?.roleType!)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền cập nhật đánh giá hiệu suất'
+                });
+                return;
+            }
+
+            const reviewId = parseInt(req.params.id);
+            
+            if (isNaN(reviewId)) {
+                res.status(400).json({
+                    success: false,
+                    message: 'ID đánh giá không hợp lệ'
+                });
+                return;
+            }
+            
+            // Lấy thông tin đánh giá hiện tại để kiểm tra quyền
+            const existingReview = await performanceService.getReviewDetails(reviewId);
+            
+            if (!existingReview) {
+                res.status(404).json({
+                    success: false,
+                    message: 'Không tìm thấy đánh giá'
+                });
+                return;
+            }
+            
+            // Nếu là trưởng phòng, kiểm tra xem đánh giá có thuộc nhân viên trong phòng của họ không
+            if (req.user?.roleType === RoleType.DEPARTMENT_HEAD && 
+                req.user?.departmentId !== existingReview.employee?.departmentId) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền cập nhật đánh giá của nhân viên phòng khác'
+                });
+                return;
+            }
+            
+            const { reviewDate, scores, comments, strengths, weaknesses, improvement } = req.body;
+            
+            // Kiểm tra trường bắt buộc
+            if (!reviewDate || !scores) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Thiếu thông tin bắt buộc'
+                });
+                return;
+            }
+            
+            // Kiểm tra định dạng scores
+            if (!Array.isArray(scores) || scores.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Điểm đánh giá không hợp lệ'
+                });
+                return;
+            }
+            
+            // Cập nhật đánh giá
+            const updatedReview = await performanceService.updateReview(reviewId, {
+                reviewDate: new Date(reviewDate),
+                scores,
+                comments,
+                strengths,
+                weaknesses,
+                improvement
+            });
+            
+            res.status(200).json({
+                success: true,
+                data: updatedReview,
+                message: 'Cập nhật đánh giá thành công'
+            });
+            
+        } catch (error: any) {
+            console.error('Lỗi cập nhật đánh giá hiệu suất:', error);
+            
+            if (error.message === 'Performance review not found' ||
+                error.message === 'Cannot modify an approved review' ||
+                error.message.includes('Invalid criteria ID')) {
+                res.status(400).json({
+                    success: false,
+                    message: error.message
+                });
+                return;
+            }
+            
+            res.status(500).json({
+                success: false,
+                message: 'Lỗi server'
+            });
+        }
+    }
 }
 
 export const performanceController = PerformanceController.getInstance();

@@ -17,6 +17,7 @@ router.post(
 router.get(
     '/plans/department',
     authenticateToken,
+    checkRole([RoleType.DEPARTMENT_HEAD, RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
     (req, res) => performanceController.getDepartmentPlans(req, res)
 );
 
@@ -43,7 +44,7 @@ router.post(
     (req, res) => performanceController.createReview(req, res)
 );
 
-// Get department reviews by plan - Only department managers can access
+// Get department reviews by plan - Only department managers, HR staff, and system admin can access
 router.get(
     '/reviews/department/:planId',
     authenticateToken,
@@ -58,7 +59,7 @@ router.get(
     (req, res) => performanceController.getEmployeeReviews(req, res)
 );
 
-// Get review details by ID - Allow access to the employee being reviewed, their manager, HR staff and admin
+// Get review details by ID - Access control implemented in controller
 router.get(
     '/reviews/:reviewId',
     authenticateToken,
@@ -87,6 +88,22 @@ router.delete(
     authenticateToken,
     checkRole([RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
     (req, res) => performanceController.deleteReview(req, res)
+);
+
+// Update performance plan - Only HR staff and system admin can update
+router.put(
+    '/plans/:id',
+    authenticateToken,
+    checkRole([RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
+    (req, res) => performanceController.updatePlan(req, res)
+);
+
+// Update performance review - Only department managers, HR staff and system admin can update
+router.put(
+    '/reviews/:id',
+    authenticateToken,
+    checkRole([RoleType.DEPARTMENT_HEAD, RoleType.HR_STAFF, RoleType.SYSTEM_ADMIN]),
+    (req, res) => performanceController.updateReview(req, res)
 );
 
 export default router;
