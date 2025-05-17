@@ -162,7 +162,7 @@ export class PayrollService {
                     throw new Error("Department head does not have an assigned department.");
                 }
                 usersToProcess = await this.userRepo.find({
-                    where: { departmentId: requestingUser.departmentId },
+                    where: { departmentId: requestingUser.departmentId },                                                                       
                     relations: ["department", "position", "role"]
                 });
             } else {
@@ -181,13 +181,6 @@ export class PayrollService {
                     
                     // Đảm bảo thông tin nhân viên được gắn vào kết quả
                     payroll.user = user;
-                    
-                    // Thêm ghi chú có chứa tên nhân viên
-                    if (!payroll.note) {
-                        payroll.note = `Payroll for ${user.fullName}`;
-                    } else {
-                        payroll.note = `${payroll.note} - ${user.fullName}`;
-                    }
                     
                     payrollResults.push(payroll);
                 } catch (error: any) {
@@ -560,27 +553,28 @@ export class PayrollService {
                 currentTotalDeduction = payroll.totalDeduction;
 
                 if (updateData.deductionNote) {
-                    // Lưu giữ note riêng vào lịch sử thay đổi thay vì gộp vào trường note chính
+                    // Chỉ lưu vào lịch sử mà không cập nhật trường note của payroll
                     historyNote = `Khấu trừ: ${updateData.deductionNote}`;
                     reasonForUpdate = historyNote;
                     
-                    // Vẫn cập nhật note chính nhưng dưới dạng thêm vào, không ghi đè
-                    const newNoteValue = initialPayrollState.note 
-                        ? `${initialPayrollState.note}; ${historyNote}` 
-                        : historyNote;
+                    // Không tự động cập nhật note chính
+                    // const newNoteValue = initialPayrollState.note 
+                    //     ? `${initialPayrollState.note}; ${historyNote}` 
+                    //     : historyNote;
                     
-                    if (initialPayrollState.note !== newNoteValue) {
-                        historyChanges.push({ 
-                            field: 'note', 
-                            oldValue: initialPayrollState.note, 
-                            newValue: newNoteValue 
-                        });
-                    }
+                    // if (initialPayrollState.note !== newNoteValue) {
+                    //     historyChanges.push({ 
+                    //         field: 'note', 
+                    //         oldValue: initialPayrollState.note, 
+                    //         newValue: newNoteValue 
+                    //     });
+                    // }
                     
-                    payroll.note = newNoteValue;
+                    // Giữ nguyên note ban đầu
+                    payroll.note = initialPayrollState.note;
                 }
             } else if (updateData.note !== undefined && updateData.deductionAmount === undefined) {
-                // Lưu note mới vào history thay vì gộp
+                // Lưu note mới vào history và cập nhật note chính
                 historyNote = updateData.note;
                 
                 if (initialPayrollState.note !== updateData.note) {
