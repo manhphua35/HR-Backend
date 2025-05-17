@@ -17,10 +17,10 @@ const User_1 = require("../entities/core/User");
 const Payroll_1 = require("../entities/payroll/Payroll");
 const Leave_1 = require("../entities/leave/Leave");
 const TrainingCourse_1 = require("../entities/training/TrainingCourse");
-const PerformanceReview_1 = require("../entities/performance/PerformanceReview");
-const PerformancePlan_1 = require("../entities/performance/PerformancePlan");
-const typeorm_1 = require("typeorm");
+const Performance_1 = require("../entities/performance/Performance");
 const Attendance_1 = require("../entities/attendance/Attendance");
+const typeorm_1 = require("typeorm");
+const PayrollService_1 = require("../services/PayrollService");
 class ReportService {
     constructor() {
         this.departmentRepo = data_source_1.AppDataSource.getRepository(Department_1.Department);
@@ -28,8 +28,8 @@ class ReportService {
         this.payrollRepo = data_source_1.AppDataSource.getRepository(Payroll_1.Payroll);
         this.leaveRepo = data_source_1.AppDataSource.getRepository(Leave_1.Leave);
         this.trainingRepo = data_source_1.AppDataSource.getRepository(TrainingCourse_1.TrainingCourse);
-        this.performanceRepo = data_source_1.AppDataSource.getRepository(PerformanceReview_1.PerformanceReview);
-        this.performancePlanRepo = data_source_1.AppDataSource.getRepository(PerformancePlan_1.PerformancePlan);
+        this.performanceRepo = data_source_1.AppDataSource.getRepository(Performance_1.PerformanceReview);
+        this.performancePlanRepo = data_source_1.AppDataSource.getRepository(Performance_1.PerformancePlan);
         this.reportRepo = data_source_1.AppDataSource.getRepository(DepartmentReport_1.DepartmentReport);
         this.attendanceRepo = data_source_1.AppDataSource.getRepository(Attendance_1.Attendance);
     }
@@ -257,7 +257,7 @@ class ReportService {
                 this.performanceRepo.find({
                     where: {
                         reviewDate: (0, typeorm_1.Between)(startDate, endDate),
-                        status: PerformanceReview_1.ReviewStatus.APPROVED
+                        status: Performance_1.ReviewStatus.APPROVED
                     },
                     relations: ['employee']
                 })
@@ -366,21 +366,21 @@ class ReportService {
                 where: {
                     employee: { departmentId },
                     reviewDate: (0, typeorm_1.Between)(startDate, endDate),
-                    status: PerformanceReview_1.ReviewStatus.APPROVED
+                    status: Performance_1.ReviewStatus.APPROVED
                 }
             });
             const averagePerformance = performanceReviews.length > 0
                 ? Math.round((performanceReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / performanceReviews.length) * 100) / 100
                 : 0;
             // 5. Tính tỷ lệ hoàn thành kế hoạch hiệu suất
-            const performancePlans = yield this.performancePlanRepo.find({
-                where: {
-                    departmentId,
-                    endDate: (0, typeorm_1.MoreThanOrEqual)(startDate),
-                    startDate: (0, typeorm_1.LessThanOrEqual)(endDate)
-                }
-            });
-            const completedPlans = performancePlans.filter(p => p.status === PerformancePlan_1.PlanStatus.COMPLETED).length;
+            const performancePlans = yield this.performancePlanRepo
+                .createQueryBuilder("plan")
+                .innerJoin("performance_plan_departments", "pd", "pd.plan_id = plan.id")
+                .where("pd.department_id = :departmentId", { departmentId })
+                .andWhere("plan.endDate >= :startDate", { startDate })
+                .andWhere("plan.startDate <= :endDate", { endDate })
+                .getMany();
+            const completedPlans = performancePlans.filter(p => p.status === Performance_1.PlanStatus.COMPLETED).length;
             const projectCompletion = performancePlans.length > 0
                 ? Math.round((completedPlans / performancePlans.length) * 100)
                 : 0;
@@ -397,12 +397,12 @@ class ReportService {
                 ? Math.round((completedTrainings / trainings.length) * 100)
                 : 0;
             // 7. Đếm số dự án/kế hoạch đang hoạt động
-            const activeProjects = yield this.performancePlanRepo.count({
-                where: {
-                    departmentId,
-                    status: PerformancePlan_1.PlanStatus.ACTIVE
-                }
-            });
+            const activeProjects = yield this.performancePlanRepo
+                .createQueryBuilder("plan")
+                .innerJoin("performance_plan_departments", "pd", "pd.plan_id = plan.id")
+                .where("pd.department_id = :departmentId", { departmentId })
+                .andWhere("plan.status = :status", { status: Performance_1.PlanStatus.ACTIVE })
+                .getCount();
             return {
                 employeeCount,
                 pendingLeaveRequests,
@@ -461,14 +461,78 @@ class ReportService {
                 }
             }, 0);
             const pendingLeaves = leaves.filter(leave => leave.status === Leave_1.LeaveStatus.PENDING).length;
-            // Lấy payroll gần nhất
-            const payroll = yield this.payrollRepo.findOne({
-                where: {
-                    user: { id: employee.id },
-                    month,
-                    year
+            // Dữ liệu lương
+            let payrollData = null;
+            try {
+                // Sử dụng PayrollService để lấy thông tin lương
+                const payrollDetail = yield PayrollService_1.payrollService.getPayrollDetail(employeeId, month, year);
+                if (payrollDetail) {
+                    // Chuyển đổi các giá trị sang số để đảm bảo tính toán chính xác
+                    const basicSalary = Number(payrollDetail.baseSalary);
+                    const totalAllowance = Number(payrollDetail.totalAllowance);
+                    const totalBenefit = Number(payrollDetail.totalBenefit);
+                    const bonus = Number(payrollDetail.bonus);
+                    const leaveDeductionAmount = Number(payrollDetail.leaveDeductionAmount);
+                    const latePenaltyAmount = Number(payrollDetail.latePenaltyAmount);
+                    const otherDeductions = Number(payrollDetail.totalDeduction) - leaveDeductionAmount - latePenaltyAmount;
+                    // Tính tổng khấu trừ mới (bỏ qua khấu trừ nghỉ phép)
+                    const totalDeductionWithoutLeave = latePenaltyAmount + otherDeductions;
+                    // Tính thu nhập trước thuế
+                    const incomeBeforeTax = basicSalary + totalAllowance + totalBenefit + bonus - totalDeductionWithoutLeave;
+                    // Tính thuế (10% thu nhập trước thuế)
+                    const tax = Math.max(0, incomeBeforeTax * 0.1);
+                    // Tính lương thực nhận
+                    const netSalary = incomeBeforeTax - tax;
+                    // Tạo đối tượng payroll data với các giá trị đã được tính toán lại
+                    payrollData = {
+                        month: payrollDetail.month,
+                        year: payrollDetail.year,
+                        basicSalary: basicSalary,
+                        totalAllowance: totalAllowance,
+                        totalDeduction: totalDeductionWithoutLeave,
+                        totalBenefit: totalBenefit,
+                        bonus: bonus,
+                        tax: parseFloat(tax.toFixed(2)),
+                        netSalary: parseFloat(netSalary.toFixed(2)),
+                        leaveDeductionAmount: 0, // Không trừ tiền nghỉ phép
+                        latePenaltyAmount: latePenaltyAmount,
+                        isFinalized: payrollDetail.isFinalized || false
+                    };
                 }
-            });
+            }
+            catch (error) {
+                console.error('Error fetching payroll details:', error);
+                // Không ném lỗi ở đây, chỉ ghi log để tiếp tục xử lý
+            }
+            // Nếu không có payroll hoặc có lỗi khi lấy payroll, tính toán tạm thời
+            if (!payrollData && employee.baseSalary !== null && employee.baseSalary !== undefined) {
+                // Tính toán tạm thời mà không trừ nghỉ phép
+                const baseSalaryForCalc = Number(employee.baseSalary);
+                // Tính phạt đi muộn
+                const latePenaltyAmount = lateDays * 100000;
+                // Tính tổng khấu trừ (chỉ tính phạt đi muộn)
+                const totalDeduction = latePenaltyAmount;
+                // Tính thu nhập trước thuế
+                const incomeBeforeTax = baseSalaryForCalc - totalDeduction;
+                // Tính thuế
+                const tax = Math.max(0, incomeBeforeTax * 0.1);
+                // Tính lương thực nhận
+                const netSalary = incomeBeforeTax - tax;
+                payrollData = {
+                    month,
+                    year,
+                    basicSalary: baseSalaryForCalc,
+                    totalAllowance: 0,
+                    totalDeduction,
+                    totalBenefit: 0,
+                    bonus: 0,
+                    tax: parseFloat(tax.toFixed(2)),
+                    netSalary: parseFloat(netSalary.toFixed(2)),
+                    leaveDeductionAmount: 0, // Không trừ tiền nghỉ phép
+                    latePenaltyAmount,
+                    isFinalized: false
+                };
+            }
             // Lấy khóa đào tạo đang diễn ra
             const trainings = yield this.trainingRepo.find({
                 where: {
@@ -488,7 +552,7 @@ class ReportService {
             const review = yield this.performanceRepo.findOne({
                 where: {
                     employee: { id: employee.id },
-                    status: PerformanceReview_1.ReviewStatus.APPROVED
+                    status: Performance_1.ReviewStatus.APPROVED
                 },
                 relations: ['plan'],
                 order: {
@@ -531,14 +595,7 @@ class ReportService {
                     remaining: employee.remainingLeaves || 0,
                     pending: pendingLeaves
                 },
-                payroll: payroll ? {
-                    month: payroll.month,
-                    year: payroll.year,
-                    basicSalary: payroll.baseSalary,
-                    totalAllowance: payroll.totalAllowance,
-                    totalDeduction: payroll.totalDeduction,
-                    netSalary: payroll.netSalary
-                } : null,
+                payroll: payrollData,
                 training: mappedTrainings,
                 performance: performanceData
             };

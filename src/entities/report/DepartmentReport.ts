@@ -22,7 +22,7 @@ export class DepartmentReport {
     @Column({ name: "new_employees" })
     newEmployees: number;
 
-    @Column({ name: "resigned_employees" })
+    @Column({ name: "resigned_employees", default: 0 })
     resignedEmployees: number;
 
     @Column({ name: "total_leaves" })

@@ -16,7 +16,7 @@ const Position_1 = require("./Position");
 const Role_1 = require("../auth/Role");
 const Leave_1 = require("../leave/Leave");
 const Payroll_1 = require("../payroll/Payroll");
-const PerformanceReview_1 = require("../performance/PerformanceReview");
+const Performance_1 = require("../performance/Performance");
 let User = class User {
 };
 exports.User = User;
@@ -104,11 +104,11 @@ __decorate([
     __metadata("design:type", Array)
 ], User.prototype, "leaves", void 0);
 __decorate([
-    (0, typeorm_1.OneToMany)(() => PerformanceReview_1.PerformanceReview, review => review.employee),
+    (0, typeorm_1.OneToMany)(() => Performance_1.PerformanceReview, review => review.employee),
     __metadata("design:type", Array)
 ], User.prototype, "performanceReviews", void 0);
 __decorate([
-    (0, typeorm_1.OneToMany)(() => PerformanceReview_1.PerformanceReview, review => review.reviewer),
+    (0, typeorm_1.OneToMany)(() => Performance_1.PerformanceReview, review => review.reviewer),
     __metadata("design:type", Array)
 ], User.prototype, "reviewedPerformances", void 0);
 __decorate([

@@ -23,8 +23,7 @@ const Leave_1 = require("../entities/leave/Leave");
 const DepartmentReport_1 = require("../entities/report/DepartmentReport");
 const Attendance_1 = require("../entities/attendance/Attendance");
 const Payroll_1 = require("../entities/payroll/Payroll");
-const PerformancePlan_1 = require("../entities/performance/PerformancePlan");
-const PerformanceReview_1 = require("../entities/performance/PerformanceReview");
+const Performance_1 = require("../entities/performance/Performance");
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const typeorm_1 = require("typeorm");
 class SeedService {
@@ -546,6 +545,7 @@ class SeedService {
     }
     static seedPerformance(users, departments) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             // Filter department heads and employees
             const departmentHeads = users.filter(u => u.role.roleType === Role_1.RoleType.DEPARTMENT_HEAD);
             const employees = users.filter(u => u.role.roleType === Role_1.RoleType.EMPLOYEE);
@@ -564,11 +564,10 @@ class SeedService {
                         description: `Kế hoạch đánh giá hiệu suất nhân viên ${dept.name} năm ${currentYear}`,
                         startDate: new Date(currentYear, 0, 1), // Jan 1st
                         endDate: new Date(currentYear, 11, 31), // Dec 31st
-                        department: dept,
-                        departmentId: dept.id,
+                        departments: [dept], // Sử dụng departments thay vì departmentId
                         createdBy: head.id,
                         creator: head,
-                        status: PerformancePlan_1.PlanStatus.ACTIVE,
+                        status: Performance_1.PlanStatus.ACTIVE,
                         criteria: [
                             {
                                 id: 1,
@@ -605,9 +604,13 @@ class SeedService {
             // Create performance reviews
             const reviews = [];
             for (const plan of savedPlans) {
+                // Lấy department từ plan.departments[0]
+                const dept = (_a = plan.departments) === null || _a === void 0 ? void 0 : _a[0];
+                if (!dept)
+                    continue;
                 // Get employees of this department
-                const deptEmployees = employees.filter(e => e.departmentId === plan.departmentId);
-                const head = departmentHeads.find(h => h.departmentId === plan.departmentId);
+                const deptEmployees = employees.filter(e => e.departmentId === dept.id);
+                const head = departmentHeads.find(h => h.departmentId === dept.id);
                 if (head && deptEmployees.length > 0) {
                     for (const employee of deptEmployees) {
                         const scores = plan.criteria.map(c => ({
@@ -626,7 +629,7 @@ class SeedService {
                             employeeId: employee.id,
                             reviewer: head,
                             reviewerId: head.id,
-                            status: PerformanceReview_1.ReviewStatus.APPROVED,
+                            status: Performance_1.ReviewStatus.APPROVED,
                             scores: scores,
                             totalScore: totalScore,
                             comments: "Nhân viên có tinh thần làm việc tốt, hoàn thành công việc đúng tiến độ",
@@ -736,5 +739,5 @@ SeedService.leaveRepository = data_source_1.AppDataSource.getRepository(Leave_1.
 SeedService.reportRepository = data_source_1.AppDataSource.getRepository(DepartmentReport_1.DepartmentReport);
 SeedService.attendanceRepository = data_source_1.AppDataSource.getRepository(Attendance_1.Attendance);
 SeedService.payrollRepository = data_source_1.AppDataSource.getRepository(Payroll_1.Payroll);
-SeedService.performancePlanRepository = data_source_1.AppDataSource.getRepository(PerformancePlan_1.PerformancePlan);
-SeedService.performanceReviewRepository = data_source_1.AppDataSource.getRepository(PerformanceReview_1.PerformanceReview);
+SeedService.performancePlanRepository = data_source_1.AppDataSource.getRepository(Performance_1.PerformancePlan);
+SeedService.performanceReviewRepository = data_source_1.AppDataSource.getRepository(Performance_1.PerformanceReview);

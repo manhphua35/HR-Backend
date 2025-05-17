@@ -6,7 +6,7 @@ import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance'
 import { Role, RoleType } from '../entities/auth/Role';
 import { Between, MoreThanOrEqual, LessThanOrEqual } from 'typeorm';
 
-class PayrollService {
+export class PayrollService {
     private static instance: PayrollService;
     private payrollRepo = AppDataSource.getRepository(Payroll);
     private userRepo = AppDataSource.getRepository(User);

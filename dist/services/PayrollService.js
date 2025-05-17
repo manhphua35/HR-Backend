@@ -242,8 +242,7 @@ class PayrollService {
                     .andWhere("payroll.year = :year", { year })
                     .addSelect([
                     "user.fullName",
-                    "user.email",
-                    "user.employeeId"
+                    "user.email"
                 ])
                     .getOne();
                 console.log('Result:', payroll);

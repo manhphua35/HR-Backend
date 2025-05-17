@@ -8,6 +8,7 @@ import { TrainingCourse, TrainingStatus } from '../entities/training/TrainingCou
 import { PerformanceReview, ReviewStatus, PerformancePlan, PlanStatus } from '../entities/performance/Performance';
 import { Between, LessThanOrEqual, MoreThanOrEqual, In, IsNull, MoreThan } from 'typeorm';
 import { Attendance, AttendanceStatus } from '../entities/attendance/Attendance';
+import { PayrollService } from './PayrollService';
 
 class ReportService {
     private static instance: ReportService;
@@ -20,6 +21,8 @@ class ReportService {
     private performancePlanRepo = AppDataSource.getRepository(PerformancePlan);
     private reportRepo = AppDataSource.getRepository(DepartmentReport);
     private attendanceRepo = AppDataSource.getRepository(Attendance);
+
+    private payrollService = PayrollService.getInstance();
 
     private constructor() {}
 
@@ -224,7 +227,6 @@ class ReportService {
             departments,
             activeLeaves,
             currentTrainings,
-            totalPayroll,
             performanceReviews
         ] = await Promise.all([
             // Tổng số nhân viên còn làm việc
@@ -264,12 +266,6 @@ class ReportService {
                 relations: ['user']
             }),
 
-            // Tổng chi phí lương tháng
-            this.payrollRepo.find({
-                where: { month, year },
-                relations: ['user']
-            }),
-
             // Đánh giá hiệu suất
             this.performanceRepo.find({
                 where: {
@@ -280,6 +276,10 @@ class ReportService {
             })
         ]);
 
+        // Lấy kết quả tính lương từ PayrollService
+        // Tạo một user giả có quyền admin để gọi service tính lương
+        const dummyAdminUser = { role: { roleType: 'SYSTEM_ADMIN' }, id: 0, fullName: 'System User' }; // Điều chỉnh nếu cần
+        const totalPayroll = await this.payrollService.processBatchPayrollCalculation(dummyAdminUser as any, month, year);
         // Tính toán thống kê theo phòng ban
         const departmentStats = await Promise.all(
             departments.map(async dept => {
@@ -299,7 +299,6 @@ class ReportService {
                         }
                     ]
                 });
-                const deptPayroll = totalPayroll.filter(p => p.user?.departmentId === dept.id);
                 const deptLeaves = activeLeaves.filter(l => l.user?.departmentId === dept.id);
                 const deptTrainings = currentTrainings.filter(t => t.user?.departmentId === dept.id);
                 const deptReviews = performanceReviews.filter(r => r.employee?.departmentId === dept.id);
@@ -309,7 +308,7 @@ class ReportService {
                     employeeCount: activeDeptEmployees,
                     leaveCount: deptLeaves.length,
                     trainingCount: deptTrainings.length,
-                    totalSalary: deptPayroll.reduce((sum, p) => sum + (Number(p.baseSalary || 0) + Number(p.totalAllowance || 0) + Number(p.bonus || 0) - Number(p.totalDeduction || 0)), 0),
+                    totalSalary: totalPayroll.filter(p => p.user?.departmentId === dept.id).reduce((sum, p) => sum + Number(p.netSalary || 0), 0),
                     avgPerformance: deptReviews.length > 0
                         ? Number((deptReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / deptReviews.length).toFixed(2))
                         : 0
@@ -322,7 +321,7 @@ class ReportService {
                 totalEmployees: totalActiveEmployees, // Use the new count
                 activeLeaves: activeLeaves.length,
                 ongoingTrainings: currentTrainings.length,
-                totalSalary: totalPayroll.reduce((sum, p) => sum + (Number(p.baseSalary || 0) + Number(p.totalAllowance || 0) + Number(p.bonus || 0) - Number(p.totalDeduction || 0)), 0),
+                totalSalary: totalPayroll.reduce((sum, p) => sum + Number(p.netSalary || 0), 0),
                 avgPerformance: performanceReviews.length > 0
                     ? Number((performanceReviews.reduce((sum, r) => sum + Number(r.totalScore), 0) / performanceReviews.length).toFixed(2))
                     : 0

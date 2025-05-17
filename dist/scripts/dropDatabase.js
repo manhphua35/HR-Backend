@@ -17,8 +17,7 @@ const Department_1 = require("../entities/core/Department");
 const Position_1 = require("../entities/core/Position");
 const Leave_1 = require("../entities/leave/Leave");
 const Payroll_1 = require("../entities/payroll/Payroll");
-const PerformanceReview_1 = require("../entities/performance/PerformanceReview");
-const PerformancePlan_1 = require("../entities/performance/PerformancePlan");
+const Performance_1 = require("../entities/performance/Performance");
 const Notification_1 = require("../entities/notification/Notification");
 const UserNotification_1 = require("../entities/notification/UserNotification");
 const Attendance_1 = require("../entities/attendance/Attendance");
@@ -46,8 +45,8 @@ const tempDataSource = new typeorm_1.DataSource({
         Position_1.Position,
         Leave_1.Leave,
         Payroll_1.Payroll,
-        PerformanceReview_1.PerformanceReview,
-        PerformancePlan_1.PerformancePlan,
+        Performance_1.PerformanceReview,
+        Performance_1.PerformancePlan,
         Notification_1.Notification,
         UserNotification_1.UserNotification,
         Attendance_1.Attendance,

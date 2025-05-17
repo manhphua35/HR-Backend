@@ -16,8 +16,7 @@ const TrainingCourse_1 = require("../entities/training/TrainingCourse");
 // import { CompetencyAssessment } from "../entities/training/CompetencyAssessment";
 const EditRequest_1 = require("../entities/profile/EditRequest");
 const DepartmentReport_1 = require("../entities/report/DepartmentReport");
-const PerformanceReview_1 = require("../entities/performance/PerformanceReview");
-const PerformancePlan_1 = require("../entities/performance/PerformancePlan");
+const Performance_1 = require("../entities/performance/Performance");
 const Notification_1 = require("../entities/notification/Notification");
 const UserNotification_1 = require("../entities/notification/UserNotification");
 const Attendance_1 = require("../entities/attendance/Attendance");
@@ -45,8 +44,8 @@ exports.AppDataSource = new typeorm_1.DataSource({
         // CompetencyAssessment,
         EditRequest_1.EditRequest,
         DepartmentReport_1.DepartmentReport,
-        PerformanceReview_1.PerformanceReview,
-        PerformancePlan_1.PerformancePlan,
+        Performance_1.PerformanceReview,
+        Performance_1.PerformancePlan,
         Notification_1.Notification,
         UserNotification_1.UserNotification,
         Attendance_1.Attendance
