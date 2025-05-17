@@ -155,7 +155,7 @@ export class PayrollService {
 
             if (userRoleType === RoleType.SYSTEM_ADMIN || userRoleType === RoleType.HR_STAFF) {
                 usersToProcess = await this.userRepo.find({ 
-                    relations: ["department", "position", "role"]
+                    relations: ["department", "role"]
                 });
             } else if (userRoleType === RoleType.DEPARTMENT_HEAD) {
                 if (!requestingUser.departmentId) {
@@ -163,7 +163,7 @@ export class PayrollService {
                 }
                 usersToProcess = await this.userRepo.find({
                     where: { departmentId: requestingUser.departmentId },                                                                       
-                    relations: ["department", "position", "role"]
+                    relations: ["department", "role"]
                 });
             } else {
                  throw new Error("User does not have permission to process batch payroll.");
@@ -200,7 +200,6 @@ export class PayrollService {
             const queryBuilder = this.payrollRepo
                 .createQueryBuilder("payroll")
                 .leftJoinAndSelect("payroll.user", "user")
-                .leftJoinAndSelect("user.position", "position")
                 .leftJoinAndSelect("user.department", "department")
                 .where("payroll.month = :month", { month })
                 .andWhere("payroll.year = :year", { year });
@@ -234,7 +233,6 @@ export class PayrollService {
             const payroll = await this.payrollRepo
                 .createQueryBuilder("payroll")
                 .leftJoinAndSelect("payroll.user", "user")
-                .leftJoinAndSelect("user.position", "position")
                 .leftJoinAndSelect("user.department", "department")
                 .where("user.id = :userId", { userId })
                 .andWhere("payroll.month = :month", { month })
@@ -282,7 +280,7 @@ export class PayrollService {
                 throw new Error("Payroll not found");
             }
             
-            return payroll.updateHistory || [];
+            return (payroll.updateHistory || []).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
         } catch (error) {
             console.error("Error getting payroll history:", error);
             throw error;

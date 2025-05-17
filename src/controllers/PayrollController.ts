@@ -5,7 +5,7 @@ import { payrollService } from '../services/PayrollService';
 import { User } from '../entities/core/User'; // Cần User để ép kiểu req.user
 import { AppDataSource } from '../config/data-source'; // Import AppDataSource
 import { RoleType } from '../entities/auth/Role'; // Giả sử RoleType được dùng trong token payload
-import { ComponentType } from '../entities/payroll/Payroll';
+// import { ComponentType } from '../entities/payroll/Payroll';
 import { In } from 'typeorm';
 
 class PayrollController {
@@ -108,7 +108,7 @@ class PayrollController {
                                         fullName: user.fullName,
                                         email: user.email,
                                         department: user.department?.name,
-                                        position: user.position?.title
+                                        // position: user.position?.title
                                     }
                                 };
                             }

@@ -2,7 +2,6 @@ import { AppDataSource } from '../config/data-source';
 import { User } from '../entities/core/User';
 import { Role } from '../entities/auth/Role';
 import { Department } from '../entities/core/Department';
-import { Position } from '../entities/core/Position';
 import bcrypt from 'bcrypt';
 
 interface CreateUserData {
@@ -12,7 +11,7 @@ interface CreateUserData {
     fullName: string;
     phone?: string;
     departmentId?: number;
-    positionId?: string;
+    description?: string;
     roleId: number;
     hireDate: Date;
     remainingLeaves?: number;
@@ -23,7 +22,7 @@ interface UpdateUserData {
     fullName?: string;
     phone?: string | null;
     departmentId?: number | null;
-    positionId?: string | null;
+    description?: string | null;
     roleId?: number;
     isActive?: boolean;
     remainingLeaves?: number;
@@ -34,7 +33,6 @@ class UserService {
     private userRepository = AppDataSource.getRepository(User);
     private roleRepository = AppDataSource.getRepository(Role);
     private departmentRepository = AppDataSource.getRepository(Department);
-    private positionRepository = AppDataSource.getRepository(Position);
 
     public static getInstance(): UserService {
         if (!UserService.instance) {
@@ -88,14 +86,6 @@ class UserService {
                 }
             }
 
-            // Check position if provided
-            if (data.positionId) {
-                const position = await this.positionRepository.findOneBy({ id: data.positionId });
-                if (!position) {
-                    throw new Error('Position not found');
-                }
-            }
-
             // Hash password
             const salt = await bcrypt.genSalt(10);
             const passwordHash = await bcrypt.hash(data.password, salt);
@@ -119,8 +109,8 @@ class UserService {
             if (data.departmentId !== undefined) {
                 user.departmentId = data.departmentId;
             }
-            if (data.positionId !== undefined) {
-                user.positionId = data.positionId;
+            if (data.description !== undefined) {
+                user.description = data.description;
             }
 
             await this.userRepository.save(user);
@@ -139,7 +129,6 @@ class UserService {
             const users = await this.userRepository.find({
                 relations: {
                     department: true,
-                    position: true,
                     role: true
                 }
             });
@@ -160,7 +149,6 @@ class UserService {
                 where: { id },
                 relations: {
                     department: true,
-                    position: true,
                     role: true
                 }
             });
@@ -196,16 +184,15 @@ class UserService {
                 }
             }
 
-            // Check position if provided
-            if (data.positionId) {
-                const position = await this.positionRepository.findOneBy({ id: data.positionId });
-                if (!position) {
-                    throw new Error('Position not found');
-                }
-            }
-
-            // Update user fields
-            Object.assign(user, data);
+            // Update user fields with type safety
+            if (data.email !== undefined) user.email = data.email || '';
+            if (data.fullName !== undefined) user.fullName = data.fullName || '';
+            if (data.phone !== undefined) user.phone = data.phone || '';
+            if (data.departmentId !== undefined) user.departmentId = data.departmentId || 0;
+            if (data.description !== undefined) user.description = data.description || '';
+            if (data.roleId !== undefined) user.roleId = data.roleId;
+            if (data.isActive !== undefined) user.isActive = data.isActive;
+            if (data.remainingLeaves !== undefined) user.remainingLeaves = data.remainingLeaves;
 
             await this.userRepository.save(user);
 
@@ -238,7 +225,6 @@ class UserService {
                 },
                 relations: {
                     department: true,
-                    position: true,
                     role: true
                 },
                 order: {

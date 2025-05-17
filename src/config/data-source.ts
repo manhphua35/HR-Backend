@@ -1,7 +1,6 @@
 import { DataSource } from "typeorm";
 import { User } from "../entities/core/User";
 import { Department } from "../entities/core/Department";
-import { Position } from "../entities/core/Position";
 import { Role } from "../entities/auth/Role";
 import { Permission } from "../entities/auth/Permission";
 import { RolePermission } from "../entities/auth/RolePermission";
@@ -14,8 +13,8 @@ import { TrainingCourse } from "../entities/training/TrainingCourse";
 import { EditRequest } from "../entities/profile/EditRequest";
 import { DepartmentReport } from "../entities/report/DepartmentReport";
 import { PerformanceReview, PerformancePlan } from "../entities/performance/Performance";
-import { Notification } from "../entities/notification/Notification";
-import { UserNotification } from "../entities/notification/UserNotification";
+// import { Notification } from "../entities/notification/Notification";
+// import { UserNotification } from "../entities/notification/UserNotification";
 import { Attendance } from "../entities/attendance/Attendance";
 
 export const AppDataSource = new DataSource({
@@ -30,7 +29,6 @@ export const AppDataSource = new DataSource({
     entities: [
         User,
         Department,
-        Position,
         Role,
         Permission,
         RolePermission,
@@ -44,8 +42,8 @@ export const AppDataSource = new DataSource({
         DepartmentReport,
         PerformanceReview,
         PerformancePlan,
-        Notification,
-        UserNotification,
+        // Notification,
+            // UserNotification,
         Attendance
     ],
     subscribers: [],

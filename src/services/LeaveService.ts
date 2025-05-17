@@ -296,7 +296,7 @@ class LeaveService {
         try {
             return await this.leaveRepository.find({
                 where: { status: LeaveStatus.PENDING },
-                relations: ['user', 'approver'],
+                relations: ['user', 'user.department', 'approver'],
                 order: { createdAt: 'ASC' }
             });
         } catch (error) {
@@ -329,7 +329,7 @@ class LeaveService {
                     startDate: Between(startDate, endDate),
                     status: LeaveStatus.APPROVED
                 },
-                relations: ['user', 'approver'],
+                relations: ['user', 'user.department', 'approver'],
                 order: { startDate: 'ASC' }
             });
         } catch (error) {
@@ -346,7 +346,7 @@ class LeaveService {
             }
             return await this.leaveRepository.findOne({
                 where: { id },
-                relations: ['user', 'approver']
+                relations: ['user', 'user.department', 'approver']
             });
         } catch (error) {
             throw error;
@@ -357,6 +357,7 @@ class LeaveService {
         try {
             const query = this.leaveRepository.createQueryBuilder('leave')
                 .leftJoinAndSelect('leave.user', 'user')
+                .leftJoinAndSelect('user.department', 'department')
                 .leftJoinAndSelect('leave.approver', 'approver')
                 .orderBy('leave.createdAt', 'DESC');
 
@@ -383,7 +384,6 @@ class LeaveService {
 
     public async deleteLeave(id: number): Promise<boolean> {
         try {
-            // Check if the leave exists
             const leave = await this.getLeaveById(id);
             if (!leave) {
                 throw new Error('Leave request not found');

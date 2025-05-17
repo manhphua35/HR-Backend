@@ -21,7 +21,7 @@ class ProfileService {
     async getUserProfile(userId: number): Promise<User> {
         const user = await this.userRepo.findOne({
             where: { id: userId },
-            relations: ['department', 'position', 'role']
+            relations: ['department', 'role']
         });
         if (!user) {
             throw new Error('User not found');

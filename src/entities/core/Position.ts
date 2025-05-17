@@ -1,8 +1,10 @@
-import { Entity, PrimaryColumn, Column, OneToMany, BeforeInsert, ManyToOne, JoinColumn } from "typeorm"; // Added ManyToOne, JoinColumn
+import { Entity, PrimaryColumn, Column, OneToMany, BeforeInsert } from "typeorm";
 import { User } from "./User";
 import { v4 as uuidv4 } from 'uuid';
-import { Department } from "./Department"; // Added Department import
 
+// Stub entity for Position to maintain backward compatibility
+// This file exists only to support existing code that references Position
+// All functionality has been moved to the User entity's description field
 @Entity("positions")
 export class Position {
     @PrimaryColumn({ length: 36 })
@@ -17,16 +19,9 @@ export class Position {
     @Column({ name: "department_id" })
     departmentId: number;
 
-    // Define the relationship to Department
-    @ManyToOne(() => Department, department => department.positions)
-    @JoinColumn({ name: "department_id" }) // Links this relationship to the departmentId column
-    department: Department;
-
-    @OneToMany(() => User, user => user.position)
-    users: User[];
-
     @BeforeInsert()
     generateId() {
         this.id = uuidv4();
     }
 }
+ 

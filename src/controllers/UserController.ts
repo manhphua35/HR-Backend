@@ -30,7 +30,7 @@ class UserController {
                 fullName: req.body.fullName,
                 phone: req.body.phone,
                 departmentId: req.body.departmentId,
-                positionId: req.body.positionId,
+                description: req.body.description,
                 roleId: req.body.roleId,
                 hireDate: new Date(req.body.hireDate),
                 remainingLeaves: req.body.remainingLeaves
@@ -68,8 +68,7 @@ class UserController {
             }
 
             if (error.message === 'Role not found' || 
-                error.message === 'Department not found' || 
-                error.message === 'Position not found') {
+                error.message === 'Department not found') {
                 res.status(404).json({
                     success: false,
                     message: error.message
@@ -135,7 +134,7 @@ class UserController {
                 fullName: req.body.fullName,
                 phone: req.body.phone,
                 departmentId: req.body.departmentId,
-                positionId: req.body.positionId,
+                description: req.body.description,
                 roleId: req.body.roleId,
                 isActive: req.body.isActive,
                 remainingLeaves: req.body.remainingLeaves
@@ -160,8 +159,7 @@ class UserController {
             console.error('Error updating user:', error);
             
             if (error.message === 'Role not found' || 
-                error.message === 'Department not found' || 
-                error.message === 'Position not found') {
+                error.message === 'Department not found') {
                 res.status(404).json({
                     success: false,
                     message: error.message

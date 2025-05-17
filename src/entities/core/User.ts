@@ -1,6 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, OneToMany } from "typeorm";
 import { Department } from "./Department";
-import { Position } from "./Position";
 import { Role } from "../auth/Role";
 import { Leave } from "../leave/Leave";
 import { Payroll } from "../payroll/Payroll";
@@ -29,8 +28,8 @@ export class User {
     @Column({ name: "department_id", nullable: true })
     departmentId!: number;
 
-    @Column({ name: "position_id", nullable: true })
-    positionId!: string;
+    @Column({ name: "description", type: "text", nullable: true })
+    description!: string;
 
     @Column({ name: "role_id" })
     roleId!: number;
@@ -59,10 +58,6 @@ export class User {
     @ManyToOne(() => Department)
     @JoinColumn({ name: "department_id" })
     department!: Department;
-
-    @ManyToOne(() => Position)
-    @JoinColumn({ name: "position_id" })
-    position!: Position;
 
     @ManyToOne(() => Role)
     @JoinColumn({ name: "role_id" })

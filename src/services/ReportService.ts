@@ -459,7 +459,7 @@ class ReportService {
         // Lấy thông tin nhân viên
         const employee = await this.userRepo.findOne({
             where: { id: employeeId },
-            relations: ['department', 'position']
+            relations: ['department']
         });
 
         if (!employee) {
@@ -637,8 +637,7 @@ class ReportService {
                 id: employee.id,
                 fullName: employee.fullName,
                 email: employee.email,
-                department: employee.department?.name,
-                position: employee.position?.title
+                department: employee.department?.name
             },
             attendance: {
                 totalWorkDays,
