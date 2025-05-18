@@ -1,7 +1,8 @@
 import { AppDataSource } from '../config/data-source';
 import { Leave, LeaveStatus, LeaveType } from '../entities/leave/Leave';
 import { User } from '../entities/core/User';
-import { Between, LessThanOrEqual, MoreThanOrEqual, FindManyOptions } from 'typeorm';
+import { Between, LessThanOrEqual, MoreThanOrEqual, FindManyOptions, In } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
 
 interface CreateLeaveData {
     userId: number;
@@ -10,6 +11,15 @@ interface CreateLeaveData {
     type: LeaveType;
     reason?: string;
     numberOfDays: number;
+}
+
+interface CreateHolidayData {
+    startDate: Date;
+    endDate: Date;
+    reason: string;
+    approverId: number;
+    departmentIds?: number[];  // Nếu có, chỉ áp dụng cho các phòng ban cụ thể
+    batchName?: string;        // Tên cho đợt nghỉ này
 }
 
 interface UpdateLeaveStatusData {
@@ -25,14 +35,27 @@ interface GetAllLeavesFilter {
     type?: LeaveType;
     userId?: number;
     departmentId?: number;
+    holidayBatchId?: string;   // Filter theo đợt nghỉ
 }
 
-// Định nghĩa kiểu cho user đã xác thực từ token (tương tự AttendanceService)
+// Định nghĩa kiểu cho user đã xác thực từ token
 interface AuthenticatedUser {
     userId: number;
     roleType: string;
     permissions: string[];
     departmentId?: number;
+}
+
+// Interface cho thông tin về đợt nghỉ
+interface HolidayBatch {
+    id: string;
+    name: string;
+    startDate: Date;
+    endDate: Date;
+    reason: string;
+    createdBy: number;
+    createdAt: Date;
+    leaveCount: number;
 }
 
 class LeaveService {
@@ -96,7 +119,7 @@ class LeaveService {
         filters: GetAllLeavesFilter = {}
     ): Promise<Leave[]> {
         const { userId: requestingUserId, roleType, departmentId: reqUserDeptId } = requestingUser;
-        const { userId, departmentId, ...otherFilters } = filters;
+        const { userId, departmentId, holidayBatchId, ...otherFilters } = filters;
 
         const query = this.leaveRepository.createQueryBuilder('leave')
             .leftJoinAndSelect('leave.user', 'user')
@@ -118,6 +141,11 @@ class LeaveService {
 
         if (otherFilters.type) {
             query.andWhere('leave.type = :type', { type: otherFilters.type });
+        }
+
+        // Filter theo đợt nghỉ nếu có
+        if (holidayBatchId) {
+            query.andWhere('leave.holidayBatchId = :holidayBatchId', { holidayBatchId });
         }
 
         // Áp dụng phân quyền
@@ -251,6 +279,220 @@ class LeaveService {
         }
     }
 
+    // Tạo kỳ nghỉ lễ cho tất cả nhân viên hoặc các phòng ban cụ thể
+    public async createHoliday(data: CreateHolidayData): Promise<{ success: boolean, count: number, errors: any[], batchId: string }> {
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+        
+        try {
+            // Tính số ngày nghỉ
+            const startDate = new Date(data.startDate);
+            const endDate = new Date(data.endDate);
+            const timeDiff = Math.abs(endDate.getTime() - startDate.getTime());
+            const numberOfDays = Math.ceil(timeDiff / (1000 * 3600 * 24)) + 1; // +1 vì bao gồm cả ngày bắt đầu
+            
+            // Tạo batch ID và name để theo dõi đợt nghỉ
+            const batchId = uuidv4();
+            const batchName = data.batchName || `Đợt nghỉ lễ ${startDate.toLocaleDateString('vi-VN')} - ${endDate.toLocaleDateString('vi-VN')}`;
+            
+            // Lấy danh sách người dùng dựa vào departmentIds (nếu có)
+            let usersQuery = this.userRepository.createQueryBuilder('user')
+                .where('user.isActive = :isActive', { isActive: true });
+            
+            if (data.departmentIds && data.departmentIds.length > 0) {
+                usersQuery = usersQuery.andWhere('user.departmentId IN (:...departmentIds)', 
+                    { departmentIds: data.departmentIds });
+            }
+            
+            const users = await usersQuery.getMany();
+            
+            if (users.length === 0) {
+                throw new Error('No active users found');
+            }
+            
+            const errors: any[] = [];
+            let successCount = 0;
+            
+            // Tạo yêu cầu nghỉ lễ cho mỗi người dùng
+            for (const user of users) {
+                try {
+                    // Kiểm tra xem người dùng đã có lịch nghỉ trùng không
+                    const overlappingLeave = await this.leaveRepository.findOne({
+                        where: [
+                            {
+                                userId: user.id,
+                                startDate: LessThanOrEqual(endDate),
+                                endDate: MoreThanOrEqual(startDate),
+                                status: LeaveStatus.PENDING
+                            },
+                            {
+                                userId: user.id,
+                                startDate: LessThanOrEqual(endDate),
+                                endDate: MoreThanOrEqual(startDate),
+                                status: LeaveStatus.APPROVED
+                            }
+                        ]
+                    });
+                    
+                    if (overlappingLeave) {
+                        errors.push({
+                            userId: user.id,
+                            message: `User ${user.fullName} already has an overlapping leave request`
+                        });
+                        continue;
+                    }
+                    
+                    // Tạo yêu cầu nghỉ lễ với trạng thái đã được chấp nhận
+                    const leave = this.leaveRepository.create({
+                        userId: user.id,
+                        startDate: data.startDate,
+                        endDate: data.endDate,
+                        type: LeaveType.HOLIDAY,
+                        reason: data.reason,
+                        status: LeaveStatus.APPROVED,
+                        approverId: data.approverId,
+                        numberOfDays,
+                        holidayBatchId: batchId,
+                        holidayBatchName: batchName
+                    });
+                    
+                    await queryRunner.manager.save(leave);
+                    successCount++;
+                } catch (error: any) {
+                    errors.push({
+                        userId: user.id,
+                        message: `Failed to create holiday for user ${user.fullName}: ${error.message}`
+                    });
+                }
+            }
+            
+            await queryRunner.commitTransaction();
+            
+            return {
+                success: true,
+                count: successCount,
+                errors,
+                batchId
+            };
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    // Lấy danh sách tất cả các đợt nghỉ lễ
+    public async getHolidayBatches(): Promise<HolidayBatch[]> {
+        try {
+            // Lấy dữ liệu từ đơn nghỉ phép và nhóm theo holidayBatchId
+            const results = await this.leaveRepository
+                .createQueryBuilder('leave')
+                .select('leave.holidayBatchId', 'id')
+                .addSelect('leave.holidayBatchName', 'name')
+                .addSelect('MIN(leave.startDate)', 'startDate')
+                .addSelect('MAX(leave.endDate)', 'endDate')
+                .addSelect('leave.reason', 'reason')
+                .addSelect('leave.approverId', 'createdBy')
+                .addSelect('MIN(leave.createdAt)', 'createdAt')
+                .addSelect('COUNT(leave.id)', 'leaveCount')
+                .where('leave.holidayBatchId IS NOT NULL')
+                .groupBy('leave.holidayBatchId')
+                .addGroupBy('leave.holidayBatchName')
+                .addGroupBy('leave.reason')
+                .addGroupBy('leave.approverId')
+                .orderBy('MIN(leave.createdAt)', 'DESC')
+                .getRawMany();
+
+            return results.map(result => ({
+                id: result.id,
+                name: result.name,
+                startDate: new Date(result.startDate),
+                endDate: new Date(result.endDate),
+                reason: result.reason,
+                createdBy: result.createdBy,
+                createdAt: new Date(result.createdAt),
+                leaveCount: parseInt(result.leaveCount)
+            }));
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    // Xóa một đợt nghỉ lễ và tất cả các đơn nghỉ liên quan
+    public async deleteHolidayBatch(batchId: string): Promise<{ success: boolean, deletedCount: number }> {
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+
+        try {
+            // Xóa tất cả đơn nghỉ thuộc đợt nghỉ này
+            const result = await queryRunner.manager.delete(Leave, { holidayBatchId: batchId });
+            
+            await queryRunner.commitTransaction();
+            
+            return {
+                success: true,
+                deletedCount: result.affected || 0
+            };
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw error;
+        } finally {
+            await queryRunner.release();
+        }
+    }
+
+    // Lấy thông tin chi tiết về một đợt nghỉ lễ
+    public async getHolidayBatchDetails(batchId: string): Promise<{ batch: HolidayBatch, leaves: Leave[] }> {
+        try {
+            // Lấy thông tin về đợt nghỉ
+            const batchesResult = await this.leaveRepository
+                .createQueryBuilder('leave')
+                .select('leave.holidayBatchId', 'id')
+                .addSelect('leave.holidayBatchName', 'name')
+                .addSelect('MIN(leave.startDate)', 'startDate')
+                .addSelect('MAX(leave.endDate)', 'endDate')
+                .addSelect('leave.reason', 'reason')
+                .addSelect('leave.approverId', 'createdBy')
+                .addSelect('MIN(leave.createdAt)', 'createdAt')
+                .addSelect('COUNT(leave.id)', 'leaveCount')
+                .where('leave.holidayBatchId = :batchId', { batchId })
+                .groupBy('leave.holidayBatchId')
+                .addGroupBy('leave.holidayBatchName')
+                .addGroupBy('leave.reason')
+                .addGroupBy('leave.approverId')
+                .getRawOne();
+
+            if (!batchesResult) {
+                throw new Error('Holiday batch not found');
+            }
+
+            const batch: HolidayBatch = {
+                id: batchesResult.id,
+                name: batchesResult.name,
+                startDate: new Date(batchesResult.startDate),
+                endDate: new Date(batchesResult.endDate),
+                reason: batchesResult.reason,
+                createdBy: batchesResult.createdBy,
+                createdAt: new Date(batchesResult.createdAt),
+                leaveCount: parseInt(batchesResult.leaveCount)
+            };
+
+            // Lấy danh sách đơn nghỉ thuộc đợt nghỉ này
+            const leaves = await this.leaveRepository.find({
+                where: { holidayBatchId: batchId },
+                relations: ['user', 'user.department', 'approver'],
+                order: { createdAt: 'DESC' }
+            });
+
+            return { batch, leaves };
+        } catch (error) {
+            throw error;
+        }
+    }
+
     public async updateLeaveStatus(
         leaveId: number,
         data: UpdateLeaveStatusData
@@ -374,6 +616,10 @@ class LeaveService {
 
             if (filters.type) {
                 query.andWhere('leave.type = :type', { type: filters.type });
+            }
+
+            if (filters.holidayBatchId) {
+                query.andWhere('leave.holidayBatchId = :holidayBatchId', { holidayBatchId: filters.holidayBatchId });
             }
 
             return await query.getMany();

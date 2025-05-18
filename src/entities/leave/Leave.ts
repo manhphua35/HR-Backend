@@ -11,6 +11,7 @@ export enum LeaveType {
     ANNUAL = "ANNUAL",
     SICK = "SICK",
     UNPAID = "UNPAID",
+    HOLIDAY = "HOLIDAY",
     OTHER = "OTHER"
 }
 
@@ -53,6 +54,12 @@ export class Leave {
 
     @Column({ type: "int" })
     numberOfDays: number;
+
+    @Column({ name: "holiday_batch_id", nullable: true })
+    holidayBatchId: string;
+
+    @Column({ name: "holiday_batch_name", nullable: true })
+    holidayBatchName: string;
 
     @CreateDateColumn({ name: "created_at" })
     createdAt: Date;

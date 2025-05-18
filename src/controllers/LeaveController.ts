@@ -21,6 +21,199 @@ class LeaveController {
         return LeaveController.instance;
     }
 
+    // Thêm phương thức mới để tạo kỳ nghỉ lễ cho tất cả nhân viên
+    public async createHoliday(req: Request, res: Response): Promise<void> {
+        try {
+            // Kiểm tra quyền (chỉ SYSTEM_ADMIN và HR_STAFF mới có quyền tạo nghỉ lễ)
+            if (req.user?.roleType !== RoleType.SYSTEM_ADMIN && req.user?.roleType !== RoleType.HR_STAFF) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền tạo kỳ nghỉ lễ'
+                });
+                return;
+            }
+
+            const { startDate, endDate, reason, departmentIds, batchName } = req.body;
+
+            // Kiểm tra dữ liệu đầu vào
+            if (!startDate || !endDate || !reason) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Ngày bắt đầu, ngày kết thúc và lý do là bắt buộc'
+                });
+                return;
+            }
+
+            // Kiểm tra định dạng ngày
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Định dạng ngày không hợp lệ'
+                });
+                return;
+            }
+
+            if (start > end) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Ngày kết thúc phải sau ngày bắt đầu'
+                });
+                return;
+            }
+
+            // Nếu có departmentIds, kiểm tra định dạng
+            let departmentIdsArray: number[] | undefined;
+            if (departmentIds) {
+                if (!Array.isArray(departmentIds)) {
+                    res.status(400).json({
+                        success: false,
+                        message: 'departmentIds phải là một mảng các ID phòng ban'
+                    });
+                    return;
+                }
+                departmentIdsArray = departmentIds.map((id: any) => Number(id));
+            }
+
+            // Gọi service để tạo kỳ nghỉ lễ
+            const result = await leaveService.createHoliday({
+                startDate: start,
+                endDate: end,
+                reason,
+                approverId: req.user.userId,
+                departmentIds: departmentIdsArray,
+                batchName
+            });
+
+            res.status(201).json({
+                success: true,
+                message: `Đã tạo thành công ${result.count} đơn nghỉ lễ`,
+                data: result
+            });
+
+        } catch (error: any) {
+            console.error('Lỗi khi tạo kỳ nghỉ lễ:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Lỗi server'
+            });
+        }
+    }
+
+    // Lấy danh sách các đợt nghỉ lễ
+    public async getHolidayBatches(req: Request, res: Response): Promise<void> {
+        try {
+            // Kiểm tra quyền
+            const userRoleType = req.user?.roleType as RoleType;
+            if (![RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF].includes(userRoleType)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền xem danh sách đợt nghỉ lễ'
+                });
+                return;
+            }
+
+            const batches = await leaveService.getHolidayBatches();
+
+            res.status(200).json({
+                success: true,
+                data: batches
+            });
+        } catch (error: any) {
+            console.error('Lỗi khi lấy danh sách đợt nghỉ lễ:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Lỗi server'
+            });
+        }
+    }
+
+    // Lấy chi tiết một đợt nghỉ lễ
+    public async getHolidayBatchDetails(req: Request, res: Response): Promise<void> {
+        try {
+            // Kiểm tra quyền
+            const userRoleType = req.user?.roleType as RoleType;
+            if (![RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF].includes(userRoleType)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền xem chi tiết đợt nghỉ lễ'
+                });
+                return;
+            }
+
+            const batchId = req.params.batchId;
+            if (!batchId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'ID đợt nghỉ là bắt buộc'
+                });
+                return;
+            }
+
+            const result = await leaveService.getHolidayBatchDetails(batchId);
+
+            res.status(200).json({
+                success: true,
+                data: result
+            });
+        } catch (error: any) {
+            console.error('Lỗi khi lấy chi tiết đợt nghỉ lễ:', error);
+            
+            if (error.message === 'Holiday batch not found') {
+                res.status(404).json({
+                    success: false,
+                    message: 'Không tìm thấy đợt nghỉ lễ'
+                });
+                return;
+            }
+            
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Lỗi server'
+            });
+        }
+    }
+
+    // Xóa một đợt nghỉ lễ và tất cả đơn nghỉ liên quan
+    public async deleteHolidayBatch(req: Request, res: Response): Promise<void> {
+        try {
+            // Kiểm tra quyền
+            const userRoleType = req.user?.roleType as RoleType;
+            if (![RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF].includes(userRoleType)) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền xóa đợt nghỉ lễ'
+                });
+                return;
+            }
+
+            const batchId = req.params.batchId;
+            if (!batchId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'ID đợt nghỉ là bắt buộc'
+                });
+                return;
+            }
+
+            const result = await leaveService.deleteHolidayBatch(batchId);
+
+            res.status(200).json({
+                success: true,
+                message: `Đã xóa thành công ${result.deletedCount} đơn nghỉ phép thuộc đợt nghỉ này`,
+                data: result
+            });
+        } catch (error: any) {
+            console.error('Lỗi khi xóa đợt nghỉ lễ:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Lỗi server'
+            });
+        }
+    }
+
     // Lấy nghỉ phép theo ngày cụ thể
     public async getLeavesBySpecificDate(req: Request, res: Response): Promise<void> {
         try {

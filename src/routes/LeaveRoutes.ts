@@ -12,6 +12,38 @@ router.post(
     (req, res) => leaveController.createLeave(req, res)
 );
 
+// Tạo kỳ nghỉ lễ - Chỉ SYSTEM_ADMIN và HR_STAFF mới có quyền
+router.post(
+    '/create-holiday',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => leaveController.createHoliday(req, res)
+);
+
+// Lấy danh sách đợt nghỉ lễ - Chỉ SYSTEM_ADMIN và HR_STAFF mới có quyền
+router.get(
+    '/holiday-batches',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => leaveController.getHolidayBatches(req, res)
+);
+
+// Lấy chi tiết một đợt nghỉ lễ - Chỉ SYSTEM_ADMIN và HR_STAFF mới có quyền
+router.get(
+    '/holiday-batches/:batchId',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => leaveController.getHolidayBatchDetails(req, res)
+);
+
+// Xóa một đợt nghỉ lễ - Chỉ SYSTEM_ADMIN và HR_STAFF mới có quyền
+router.delete(
+    '/holiday-batches/:batchId',
+    authenticateToken,
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
+    (req, res) => leaveController.deleteHolidayBatch(req, res)
+);
+
 // Update leave status - HR_STAFF có thể duyệt/từ chối đơn
 router.put(
     '/:id/status',
