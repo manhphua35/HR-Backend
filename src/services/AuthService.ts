@@ -1,7 +1,6 @@
 import { User } from '../entities/core/User';
 import { AppDataSource } from '../config/data-source';
 import { RoleType } from '../entities/auth/Role';
-import { RolePermission } from '../entities/auth/RolePermission';
 import bcrypt from 'bcrypt';
 
 class AuthService {
@@ -22,11 +21,7 @@ class AuthService {
             const user = await this.userRepository.findOne({
                 where: { username },
                 relations: {
-                    role: {
-                        rolePermissions: {
-                            permission: true
-                        }
-                    }
+                    role: true
                 }
             });
 
@@ -46,10 +41,10 @@ class AuthService {
     }
 
     public getUserPermissions(user: User): string[] {
-        if (!user.role?.rolePermissions) {
+        if (!user.role?.permissions) {
             return [];
         }
-        return user.role.rolePermissions.map(rp => rp.permission.code);
+        return user.role.permissions;
     }
 
     public async hasRole(userId: number, requiredRoles: RoleType[]): Promise<boolean> {
@@ -74,15 +69,11 @@ class AuthService {
             const user = await this.userRepository.findOne({
                 where: { id: userId },
                 relations: {
-                    role: {
-                        rolePermissions: {
-                            permission: true
-                        }
-                    }
+                    role: true
                 }
             });
 
-            if (!user || !user.role?.rolePermissions) {
+            if (!user || !user.role?.permissions) {
                 return false;
             }
 

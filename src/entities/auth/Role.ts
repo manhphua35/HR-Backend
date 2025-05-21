@@ -1,6 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from "typeorm";
 import { User } from "../core/User";
-import { RolePermission } from "./RolePermission";
 
 export enum RoleType {
     SYSTEM_ADMIN = "SYSTEM_ADMIN",
@@ -30,8 +29,7 @@ export class Role {
     @OneToMany(() => User, user => user.role)
     users: User[];
 
-    @OneToMany(() => RolePermission, rp => rp.role)
-    rolePermissions: RolePermission[];
+    
 
     @Column({ name: "created_at", type: "timestamp", default: () => "CURRENT_TIMESTAMP" })
     createdAt: Date;

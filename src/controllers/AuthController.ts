@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { userService } from '../services/UserService';
 import { tokenService } from '../services/TokenService';
-import { RolePermission } from '../entities/auth/RolePermission';
+// import { RolePermission } from '../entities/auth/RolePermission';
 import { RoleType } from '../entities/auth/Role';
 import bcrypt from 'bcrypt';
 
@@ -57,8 +57,8 @@ class AuthController {
                 return;
             }
 
-            // Get permissions from rolePermissions
-            const permissions = user.role.rolePermissions?.map((rp: RolePermission) => rp.permission.code) || [];
+            // Get permissions
+            const permissions = user.role.permissions || [];
 
             // Generate tokens
             const tokenData = {

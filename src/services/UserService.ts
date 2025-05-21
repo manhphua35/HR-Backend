@@ -3,6 +3,11 @@ import { User } from '../entities/core/User';
 import { Role } from '../entities/auth/Role';
 import { Department } from '../entities/core/Department';
 import bcrypt from 'bcrypt';
+import { Leave } from '../entities/leave/Leave';
+import { Attendance } from '../entities/attendance/Attendance';
+import { Payroll } from '../entities/payroll/Payroll';
+import { PerformancePlan } from '../entities/performance/Performance';
+import { PerformanceReview } from '../entities/performance/Performance';
 
 interface CreateUserData {
     username: string;
@@ -46,11 +51,7 @@ class UserService {
             return await this.userRepository.findOne({
                 where: { username },
                 relations: {
-                    role: {
-                        rolePermissions: {
-                            permission: true
-                        }
-                    }
+                    role: true
                 }
             });
         } catch (error) {
@@ -205,14 +206,41 @@ class UserService {
     }
 
     public async deleteUser(id: number): Promise<boolean> {
+        // Sử dụng transaction để đảm bảo tính toàn vẹn dữ liệu
+        const queryRunner = AppDataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+        
         try {
             const user = await this.userRepository.findOneBy({ id });
             if (!user) return false;
-
-            await this.userRepository.remove(user);
+            
+            // Lấy tất cả repositories liên quan
+            const leaveRepo = queryRunner.manager.getRepository(Leave);
+            const attendanceRepo = queryRunner.manager.getRepository(Attendance);
+            const payrollRepo = queryRunner.manager.getRepository(Payroll);
+            const performanceReviewRepo = queryRunner.manager.getRepository(PerformanceReview);
+            
+            // Xóa tất cả bản ghi liên quan đến nhân viên này
+            await payrollRepo.delete({ user: { id } });
+            await leaveRepo.delete({ user: { id } });
+            await attendanceRepo.delete({ user: { id } });
+            await performanceReviewRepo.delete({ employee: { id } });
+            
+            // Bây giờ có thể xóa nhân viên
+            await queryRunner.manager.remove(user);
+            
+            // Commit transaction
+            await queryRunner.commitTransaction();
             return true;
         } catch (error) {
+            // Rollback transaction nếu có lỗi
+            await queryRunner.rollbackTransaction();
+            console.error('Error deleting user with related records:', error);
             throw error;
+        } finally {
+            // Giải phóng queryRunner
+            await queryRunner.release();
         }
     }
 

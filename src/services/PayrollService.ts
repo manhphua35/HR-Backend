@@ -23,29 +23,21 @@ export class PayrollService {
     }
 
     private async _calculateNetSalaryForUser(user: User, month: number, year: number): Promise<Payroll> {
+        // Tìm bản ghi lương hiện có cho người dùng, tháng, năm cụ thể
         let existingPayroll = await this.payrollRepo.findOne({
             where: { user: { id: user.id }, month, year }
         });
 
+        // Khởi tạo các biến để tính toán lương từ đầu
         let baseSalaryForCalc: number;
-        let bonusForCalc: number = 0;
-        let allowanceForCalc: number = 0;
-        let benefitForCalc: number = 0;
-        let otherDeductionsPreserved: number = 0;
+        let bonusForCalc: number = 0; // Luôn bắt đầu với 0
+        let allowanceForCalc: number = 0; // Luôn bắt đầu với 0
+        let benefitForCalc: number = 0; // Luôn bắt đầu với 0
+        let otherDeductionsPreserved: number = 0; // Luôn bắt đầu với 0
 
-        if (existingPayroll) {
-            baseSalaryForCalc = parseFloat(String(existingPayroll.baseSalary)) || 0;
-            bonusForCalc = parseFloat(String(existingPayroll.bonus)) || 0;
-            allowanceForCalc = parseFloat(String(existingPayroll.totalAllowance)) || 0;
-            benefitForCalc = parseFloat(String(existingPayroll.totalBenefit)) || 0;
-
-            const prevTotalDeduction = parseFloat(String(existingPayroll.totalDeduction)) || 0;
-            const prevLeaveDeduction = parseFloat(String(existingPayroll.leaveDeductionAmount)) || 0;
-            const prevLatePenalty = parseFloat(String(existingPayroll.latePenaltyAmount)) || 0;
-            otherDeductionsPreserved = Math.max(0, prevTotalDeduction - prevLeaveDeduction - prevLatePenalty);
-        } else {
-            // Cho phép baseSalary của user là 0
+        // Sử dụng baseSalary từ thông tin người dùng hiện tại
             if (user.baseSalary === null || typeof user.baseSalary === 'undefined') {
+             // Xử lý trường hợp lương cơ bản không được định nghĩa
                 console.warn(`User ${user.id} - ${user.fullName} does not have a base salary defined. Creating zero-value payroll record.`);
                 const zeroPayroll = new Payroll();
                 zeroPayroll.user = user;
@@ -64,83 +56,121 @@ export class PayrollService {
                 zeroPayroll.isFinalized = false;
                 return await this.payrollRepo.save(zeroPayroll);
             }
+        // Sử dụng baseSalary của người dùng hiện tại
             baseSalaryForCalc = parseFloat(String(user.baseSalary)) || 0;
-        }
 
-        // --- Recalculate dynamic components ---
-        let leaveDeductionAmount = 0;
-        let latePenaltyAmount = 0;
+        // --- Tính toán các thành phần động (có thể thay đổi hàng tháng) ---
+        let leaveDeductionAmount = 0; // Khoản khấu trừ do nghỉ phép
+        let latePenaltyAmount = 0; // Khoản phạt do đi muộn
 
+        // Xác định phạm vi ngày của tháng lương
         const payrollMonthStartDate = new Date(year, month - 1, 1);
         const payrollMonthEndDate = new Date(year, month, 0);
 
+        // Tìm các đơn xin nghỉ phép đã được duyệt và trùng với tháng lương
         const approvedLeavesOverlappingMonth = await this.leaveRepo.find({
             where: {
                 user: { id: user.id },
                 status: LeaveStatus.APPROVED,
-                startDate: LessThanOrEqual(payrollMonthEndDate),
-                endDate: MoreThanOrEqual(payrollMonthStartDate)
+                startDate: LessThanOrEqual(payrollMonthEndDate), // Ngày bắt đầu <= ngày cuối tháng lương
+                endDate: MoreThanOrEqual(payrollMonthStartDate) // Ngày kết thúc >= ngày đầu tháng lương
             }
         });
 
+        // Tính số ngày nghỉ phép trong tháng lương
         let calculatedLeaveDaysInMonth = 0;
         for (const leave of approvedLeavesOverlappingMonth) {
+            // Xác định khoảng thời gian nghỉ phép hiệu quả trong tháng lương
             const effectiveLeaveStart = leave.startDate > payrollMonthStartDate ? leave.startDate : payrollMonthStartDate;
             const effectiveLeaveEnd = leave.endDate < payrollMonthEndDate ? leave.endDate : payrollMonthEndDate;
 
+            // Tính số ngày nghỉ phép trong khoảng thời gian hiệu quả
             if (effectiveLeaveStart <= effectiveLeaveEnd) {
                 const diffTime = Math.abs(effectiveLeaveEnd.getTime() - effectiveLeaveStart.getTime());
                 const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
                 calculatedLeaveDaysInMonth += diffDays;
             }
         }
-        leaveDeductionAmount = calculatedLeaveDaysInMonth * 0.03 * baseSalaryForCalc;
-
+        
+        // Chuyển đổi ngày sang định dạng string để truy vấn Attendance
         const monthStartDateString = payrollMonthStartDate.toISOString().split('T')[0];
         const monthEndDateString = payrollMonthEndDate.toISOString().split('T')[0];
-
-        const lateArrivals = await this.attendanceRepo.count({
+        
+        // Tìm các bản ghi vắng mặt (absent) trong tháng
+        const absentRecords = await this.attendanceRepo.count({
             where: {
                 user: { id: user.id },
                 date: Between(monthStartDateString, monthEndDateString),
-                status: AttendanceStatus.LATE
+                status: AttendanceStatus.ABSENT
             }
         });
+        
+        // Tính số ngày vắng mặt cần khấu trừ (trừ đi 1 ngày được phép nghỉ)
+        const chargableAbsentDays = Math.max(0, absentRecords - 1);
+        
+        // Tính toán khoản khấu trừ nghỉ phép (4% lương cơ bản cho mỗi ngày vắng mặt quá phép)
+        leaveDeductionAmount = chargableAbsentDays * 0.04 * baseSalaryForCalc;
+
+        // Đếm số lần đi muộn trong tháng lương
+        const lateArrivals = await this.attendanceRepo.count({
+            where: {
+                user: { id: user.id },
+                date: Between(monthStartDateString, monthEndDateString), // Trong khoảng ngày của tháng lương
+                status: AttendanceStatus.LATE // Trạng thái đi muộn
+            }
+        });
+        // Tính toán khoản phạt đi muộn (ví dụ: 100,000 cho mỗi lần đi muộn)
         latePenaltyAmount = lateArrivals * 100000;
 
+        // Tổng các khoản khấu trừ cuối cùng (nghỉ phép + đi muộn + các khoản khác đã giữ lại)
         const finalTotalDeduction = leaveDeductionAmount + latePenaltyAmount + otherDeductionsPreserved;
         
+        // Tính thu nhập trước thuế
         const incomeBeforeTax = (baseSalaryForCalc + bonusForCalc + allowanceForCalc + benefitForCalc) - finalTotalDeduction;
-        const tax = Math.max(0, incomeBeforeTax * 0.1);
+        // Tính thuế (ví dụ: 11% thu nhập trước thuế, tối thiểu 0)
+        const tax = Math.max(0, incomeBeforeTax * 0.11);
+        // Tính lương ròng (Net Salary)
         const netSalary = incomeBeforeTax - tax;
 
+        // Chuẩn bị đối tượng Payroll để lưu hoặc cập nhật
         let payrollToSave: Payroll;
         if (existingPayroll) {
+            // Nếu đã có, sử dụng bản ghi hiện có
             payrollToSave = existingPayroll;
+            // Đặt lại các giá trị có thể thay đổi hàng tháng
+            payrollToSave.bonus = 0;
+            payrollToSave.totalAllowance = 0;
+            payrollToSave.totalBenefit = 0;
+            payrollToSave.totalDeduction = 0; // Sẽ được tính lại sau
+            payrollToSave.leaveDeductionAmount = 0; // Sẽ được tính lại sau
+            payrollToSave.latePenaltyAmount = 0; // Sẽ được tính lại sau
+            // Giữ nguyên note và isFinalized nếu có
         } else {
+            // Nếu chưa có, tạo bản ghi mới
             payrollToSave = new Payroll();
             payrollToSave.user = user;
             payrollToSave.userId = user.id;
             payrollToSave.month = month;
             payrollToSave.year = year;
+            payrollToSave.note = '';
+            payrollToSave.isFinalized = false; // Bản ghi mới chưa được hoàn tất
         }
 
+        // Cập nhật các trường của đối tượng Payroll với kết quả tính toán (làm tròn 2 chữ số thập phân)
         payrollToSave.baseSalary = parseFloat(baseSalaryForCalc.toFixed(2));
-        payrollToSave.totalAllowance = parseFloat(allowanceForCalc.toFixed(2));
-        payrollToSave.totalDeduction = parseFloat(finalTotalDeduction.toFixed(2));
-        payrollToSave.totalBenefit = parseFloat(benefitForCalc.toFixed(2));
-        payrollToSave.leaveDeductionAmount = parseFloat(leaveDeductionAmount.toFixed(2));
-        payrollToSave.latePenaltyAmount = parseFloat(latePenaltyAmount.toFixed(2));
+        // bonus, allowance, benefit đã được đặt lại về 0 hoặc giữ nguyên nếu updateData có ghi đè
+        payrollToSave.totalAllowance = parseFloat(allowanceForCalc.toFixed(2)); // allowanceForCalc luôn là 0 ở đây
+        payrollToSave.totalBenefit = parseFloat(benefitForCalc.toFixed(2)); // benefitForCalc luôn là 0 ở đây
+        payrollToSave.totalDeduction = parseFloat(finalTotalDeduction.toFixed(2)); // totalDeduction được tính lại
+        payrollToSave.leaveDeductionAmount = parseFloat(leaveDeductionAmount.toFixed(2)); // leaveDeductionAmount được tính lại
+        payrollToSave.latePenaltyAmount = parseFloat(latePenaltyAmount.toFixed(2)); // latePenaltyAmount được tính lại
+        // bonus giữ nguyên giá trị 0 đã khởi tạo ở trên hoặc được cập nhật bởi updatePayroll
         payrollToSave.bonus = parseFloat(bonusForCalc.toFixed(2));
-        payrollToSave.tax = parseFloat(tax.toFixed(2));
-        payrollToSave.netSalary = parseFloat(netSalary.toFixed(2));
-        
-        if (existingPayroll) {
-            payrollToSave.isFinalized = existingPayroll.isFinalized; 
-        } else {
-            payrollToSave.isFinalized = false;
-        }
 
+        payrollToSave.tax = parseFloat(tax.toFixed(2)); // tax được tính lại
+        payrollToSave.netSalary = parseFloat(netSalary.toFixed(2)); // netSalary được tính lại
+        
+        // Lưu hoặc cập nhật bản ghi Payroll vào cơ sở dữ liệu
         return await this.payrollRepo.save(payrollToSave);
     }
 
@@ -372,7 +402,11 @@ export class PayrollService {
         try {
             // console.log(`[PayrollService] updatePayroll for ID: ${payrollId} - Received data:`, JSON.stringify(updateData));
 
-            const payroll = await this.payrollRepo.findOneBy({ id: payrollId });
+            // Tìm payroll kèm theo thông tin user để cập nhật cả lương cơ bản của user
+            const payroll = await this.payrollRepo.findOne({
+                where: { id: payrollId },
+                relations: ["user"] // Thêm quan hệ với user
+            });
             if (!payroll) {
                 throw new Error("Payroll not found");
             }
@@ -397,6 +431,7 @@ export class PayrollService {
                 note: payroll.note ?? null, // Đảm bảo note là null nếu nó là undefined/null
                 netSalary: (payroll.netSalary === null || payroll.netSalary === undefined) ? null : (parseFloat(String(payroll.netSalary)) || 0),
             };
+            console.log(`[PayrollService] initialPayrollState:`, initialPayrollState);
 
             // Các biến làm việc cho việc tính toán, khởi tạo từ giá trị hiện tại (sau này sẽ được cập nhật nếu có trong updateData)
             let currentBaseSalary = initialPayrollState.baseSalary;
@@ -409,12 +444,22 @@ export class PayrollService {
             // Xử lý cập nhật và ghi nhận thay đổi vào historyChanges
             if (updateData.baseSalary !== undefined && updateData.baseSalary !== null) {
                 const newValue = parseFloat(String(updateData.baseSalary)) || 0;
+                console.log(`[PayrollService] Cập nhật lương cơ bản: ${initialPayrollState.baseSalary} -> ${newValue}`);
                 if (initialPayrollState.baseSalary !== newValue) {
                     historyChanges.push({ field: 'baseSalary', oldValue: initialPayrollState.baseSalary, newValue: newValue });
                 }
                 payroll.baseSalary = newValue;
                 currentBaseSalary = newValue;
+                
+                // Cập nhật thêm lương cơ bản trong bảng User
+                if (payroll.user) {
+                    console.log(`[PayrollService] Cập nhật lương cơ bản cho user ${payroll.user.id}: ${payroll.user.baseSalary} -> ${newValue}`);
+                    payroll.user.baseSalary = newValue;
+                    await this.userRepo.save(payroll.user);
+                }
+                
                 reasonForUpdate = "Cập nhật lương cơ bản";
+                console.log(`[PayrollService] Sau khi gán: payroll.baseSalary = ${payroll.baseSalary}`);
             }
 
             // Cập nhật theo loại thành phần lương (nếu có chỉ định)
@@ -605,9 +650,13 @@ export class PayrollService {
                 });
             }
             
+            console.log(`[PayrollService] Trước khi lưu: payroll.baseSalary = ${payroll.baseSalary}`);
             await this.payrollRepo.save(payroll);
+            console.log(`[PayrollService] Sau khi lưu: payroll.baseSalary = ${payroll.baseSalary}`);
 
             const updatedPayroll = await this.payrollRepo.findOneBy({ id: payrollId });
+            console.log(`[PayrollService] Sau khi truy vấn lại: updatedPayroll.baseSalary = ${updatedPayroll?.baseSalary}`);
+            console.log(`[PayrollService] updatedPayroll:`, updatedPayroll);
             if (!updatedPayroll) {
                  console.log(`[PayrollService] Failed to retrieve payroll with ID: ${payrollId} after update call.`);
                  throw new Error("Failed to retrieve payroll after update");

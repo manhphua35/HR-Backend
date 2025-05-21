@@ -2,8 +2,8 @@ import { DataSource } from "typeorm";
 import { User } from "../entities/core/User";
 import { Department } from "../entities/core/Department";
 import { Role } from "../entities/auth/Role";
-import { Permission } from "../entities/auth/Permission";
-import { RolePermission } from "../entities/auth/RolePermission";
+// import { Permission } from "../entities/auth/Permission";
+// import { RolePermission } from "../entities/auth/RolePermission";
 import { Leave } from "../entities/leave/Leave";
 import { Payroll } from "../entities/payroll/Payroll";
 import { TrainingCourse } from "../entities/training/TrainingCourse";
@@ -30,8 +30,8 @@ export const AppDataSource = new DataSource({
         User,
         Department,
         Role,
-        Permission,
-        RolePermission,
+        // Permission,
+        // RolePermission,
         Leave,
         Payroll,
         TrainingCourse,

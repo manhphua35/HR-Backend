@@ -501,7 +501,10 @@ class ReportService {
         
         const pendingLeaves = leaves.filter(leave => leave.status === LeaveStatus.PENDING).length;
 
-        // Lấy payroll đã tính toán
+        // Lấy payroll từ PayrollService thay vì tự tính toán
+        let payrollData = null;
+        
+        // Tìm kiếm bảng lương hiện có
         const payroll = await this.payrollRepo.findOne({
             where: {
                 user: { id: employee.id },
@@ -510,10 +513,8 @@ class ReportService {
             }
         });
 
-        // Xử lý dữ liệu lương chi tiết như trong PayrollService
-        let payrollData = null;
         if (payroll) {
-            // Sử dụng các giá trị đã được tính trong payroll
+            // Sử dụng giá trị từ bảng lương hiện có
             payrollData = {
                 month: payroll.month,
                 year: payroll.year,
@@ -526,63 +527,52 @@ class ReportService {
                 netSalary: payroll.netSalary,
                 leaveDeductionAmount: payroll.leaveDeductionAmount,
                 latePenaltyAmount: payroll.latePenaltyAmount,
-                isFinalized: payroll.isFinalized
+                isFinalized: payroll.isFinalized,
+                // Thêm lịch sử thay đổi lương
+                updateHistory: payroll.updateHistory || []
             };
-        } else if (employee.baseSalary !== null && employee.baseSalary !== undefined) {
-            // Nếu không có payroll, tính toán tạm thời như PayrollService
-            const baseSalaryForCalc = parseFloat(String(employee.baseSalary)) || 0;
-            
-            // Tính khấu trừ nghỉ phép
-            const approvedLeavesOverlappingMonth = leaves.filter(leave => 
-                leave.status === LeaveStatus.APPROVED &&
-                leave.startDate && leave.endDate &&
-                new Date(leave.startDate) <= endDate &&
-                new Date(leave.endDate) >= startDate
-            );
-            
-            let calculatedLeaveDaysInMonth = 0;
-            for (const leave of approvedLeavesOverlappingMonth) {
-                const effectiveLeaveStart = new Date(leave.startDate) > startDate ? new Date(leave.startDate) : startDate;
-                const effectiveLeaveEnd = new Date(leave.endDate) < endDate ? new Date(leave.endDate) : endDate;
-
-                if (effectiveLeaveStart <= effectiveLeaveEnd) {
-                    const diffTime = Math.abs(effectiveLeaveEnd.getTime() - effectiveLeaveStart.getTime());
-                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-                    calculatedLeaveDaysInMonth += diffDays;
+        } else {
+            // Nếu chưa có bảng lương, gọi PayrollService để tính toán
+            try {
+                // Tạo một user giả với quyền admin để có thể tính lương
+                const dummyAdmin = {
+                    id: 0,
+                    fullName: 'System',
+                    role: { roleType: 'SYSTEM_ADMIN' }
+                };
+                
+                // Sử dụng phương thức từ PayrollService để tính lương
+                const payrollResults = await this.payrollService.processBatchPayrollCalculation(
+                    dummyAdmin as any, 
+                    month, 
+                    year
+                );
+                
+                // Tìm bản ghi lương của nhân viên trong kết quả
+                const calculatedPayroll = payrollResults.find(p => p.userId === employee.id);
+                
+                if (calculatedPayroll) {
+                    payrollData = {
+                        month: calculatedPayroll.month,
+                        year: calculatedPayroll.year,
+                        basicSalary: calculatedPayroll.baseSalary,
+                        totalAllowance: calculatedPayroll.totalAllowance,
+                        totalDeduction: calculatedPayroll.totalDeduction,
+                        totalBenefit: calculatedPayroll.totalBenefit,
+                        bonus: calculatedPayroll.bonus,
+                        tax: calculatedPayroll.tax,
+                        netSalary: calculatedPayroll.netSalary,
+                        leaveDeductionAmount: calculatedPayroll.leaveDeductionAmount,
+                        latePenaltyAmount: calculatedPayroll.latePenaltyAmount,
+                        isFinalized: calculatedPayroll.isFinalized,
+                        updateHistory: calculatedPayroll.updateHistory || []
+                    };
                 }
+            } catch (error) {
+                console.error(`Không thể tính lương cho nhân viên ${employee.id}:`, error);
+                // Trả về null nếu không thể tính lương
+                payrollData = null;
             }
-            
-            const leaveDeductionAmount = calculatedLeaveDaysInMonth * 0.03 * baseSalaryForCalc;
-            
-            // Tính phạt đi muộn
-            const latePenaltyAmount = lateDays * 100000;
-            
-            // Tính tổng khấu trừ
-            const totalDeduction = leaveDeductionAmount + latePenaltyAmount;
-            
-            // Tính thu nhập trước thuế
-            const incomeBeforeTax = baseSalaryForCalc - totalDeduction;
-            
-            // Tính thuế
-            const tax = Math.max(0, incomeBeforeTax * 0.1);
-            
-            // Tính lương thực nhận
-            const netSalary = incomeBeforeTax - tax;
-            
-            payrollData = {
-                month,
-                year,
-                basicSalary: baseSalaryForCalc,
-                totalAllowance: 0,
-                totalDeduction,
-                totalBenefit: 0,
-                bonus: 0,
-                tax,
-                netSalary,
-                leaveDeductionAmount,
-                latePenaltyAmount,
-                isFinalized: false
-            };
         }
 
         // Lấy khóa đào tạo đang diễn ra
