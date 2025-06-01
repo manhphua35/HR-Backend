@@ -25,6 +25,9 @@ export class User {
     @Column({ length: 20, nullable: true })
     phone!: string;
 
+    @Column({ length: 100, nullable: true })
+    address!: string;
+    
     @Column({ name: "department_id", nullable: true })
     departmentId!: number;
 
