@@ -6,7 +6,6 @@ import bcrypt from 'bcrypt';
 import { Leave } from '../entities/leave/Leave';
 import { Attendance } from '../entities/attendance/Attendance';
 import { Payroll } from '../entities/payroll/Payroll';
-import { PerformancePlan } from '../entities/performance/Performance';
 import { PerformanceReview } from '../entities/performance/Performance';
 
 interface CreateUserData {
@@ -17,6 +16,7 @@ interface CreateUserData {
     phone?: string;
     departmentId?: number;
     description?: string;
+    avatar?: string;
     roleId: number;
     hireDate: Date;
     remainingLeaves?: number;
@@ -28,6 +28,7 @@ interface UpdateUserData {
     phone?: string | null;
     departmentId?: number | null;
     description?: string | null;
+    avatar?: string | null;
     roleId?: number;
     isActive?: boolean;
     remainingLeaves?: number;
@@ -113,6 +114,9 @@ class UserService {
             if (data.description !== undefined) {
                 user.description = data.description;
             }
+            if (data.avatar !== undefined) {
+                user.avatar = data.avatar;
+            }
 
             await this.userRepository.save(user);
             
@@ -191,6 +195,7 @@ class UserService {
             if (data.phone !== undefined) user.phone = data.phone || '';
             if (data.departmentId !== undefined) user.departmentId = data.departmentId || 0;
             if (data.description !== undefined) user.description = data.description || '';
+            if (data.avatar !== undefined) user.avatar = data.avatar || '';
             if (data.roleId !== undefined) user.roleId = data.roleId;
             if (data.isActive !== undefined) user.isActive = data.isActive;
             if (data.remainingLeaves !== undefined) user.remainingLeaves = data.remainingLeaves;

@@ -31,6 +31,7 @@ class UserController {
                 phone: req.body.phone,
                 departmentId: req.body.departmentId,
                 description: req.body.description,
+                avatar: req.body.avatar,
                 roleId: req.body.roleId,
                 hireDate: new Date(req.body.hireDate),
                 remainingLeaves: req.body.remainingLeaves
@@ -126,7 +127,6 @@ class UserController {
     }
 
     public async updateUser(req: Request, res: Response): Promise<void> {
-        console.log(req.body)
         try {
             const userId = parseInt(req.params.id);
             const userData = {
@@ -135,6 +135,7 @@ class UserController {
                 phone: req.body.phone,
                 departmentId: req.body.departmentId,
                 description: req.body.description,
+                avatar: req.body.avatar,
                 roleId: req.body.roleId,
                 isActive: req.body.isActive,
                 remainingLeaves: req.body.remainingLeaves

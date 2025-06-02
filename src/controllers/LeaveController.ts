@@ -656,6 +656,55 @@ class LeaveController {
             });
         }
     }
+
+    // Lấy danh sách đơn nghỉ phép của phòng ban cho trưởng phòng
+    public async getDepartmentLeaves(req: Request, res: Response): Promise<void> {
+        try {
+            const user = req.user as AuthenticatedUser;
+            
+            // Kiểm tra xem người dùng có phải là trưởng phòng không
+            if (user.roleType !== RoleType.DEPARTMENT_HEAD) {
+                res.status(403).json({
+                    success: false,
+                    message: 'Bạn không có quyền xem danh sách nghỉ phép của phòng ban'
+                });
+                return;
+            }
+
+            // Kiểm tra xem người dùng có departmentId không
+            if (!user.departmentId) {
+                res.status(400).json({
+                    success: false,
+                    message: 'Không tìm thấy thông tin phòng ban của bạn'
+                });
+                return;
+            }
+
+            const { startDate, endDate, status, type } = req.query;
+
+            // Gọi service để lấy danh sách
+            const leaves = await leaveService.getDepartmentLeaves(
+                user.departmentId,
+                {
+                    startDate: startDate as string,
+                    endDate: endDate as string,
+                    status: status as LeaveStatus,
+                    type: type as LeaveType
+                }
+            );
+
+            res.json({
+                success: true,
+                data: leaves
+            });
+        } catch (error) {
+            console.error('Error in getDepartmentLeaves:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Đã có lỗi xảy ra khi lấy danh sách nghỉ phép'
+            });
+        }
+    }
 }
 
 export const leaveController = LeaveController.getInstance();

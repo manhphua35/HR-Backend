@@ -33,7 +33,7 @@ router.get(
 router.put(
     '/update/:id',
     authenticateToken,
-    checkRole([RoleType.SYSTEM_ADMIN]),
+    checkRole([RoleType.SYSTEM_ADMIN, RoleType.HR_STAFF]),
     (req, res) => userController.updateUser(req, res)
 );
 

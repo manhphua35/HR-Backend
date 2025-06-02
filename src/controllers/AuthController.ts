@@ -23,26 +23,26 @@ class AuthController {
             if (!username || !password) {
                 res.status(400).json({
                     success: false,
-                    message: 'Username and password are required'
+                    message: 'Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu'
                 });
                 return;
             }
 
-            // Find user with role and permissions
+            // Find user
             const user = await userService.findUserByUsername(username);
 
             if (!user) {
-                res.status(401).json({
+                res.status(404).json({
                     success: false,
-                    message: 'Invalid username or password'
+                    message: 'Tài khoản không tồn tại trong hệ thống'
                 });
                 return;
             }
 
             if (!user.isActive) {
-                res.status(401).json({
-                    success: false,
-                    message: 'Account is inactive'
+                res.status(403).json({
+                    success: false, 
+                    message: 'Tài khoản của bạn đã bị khóa'
                 });
                 return;
             }
@@ -52,7 +52,7 @@ class AuthController {
             if (!isValidPassword) {
                 res.status(401).json({
                     success: false,
-                    message: 'Invalid username or password'
+                    message: 'Tên đăng nhập hoặc mật khẩu không chính xác'
                 });
                 return;
             }
@@ -90,7 +90,7 @@ class AuthController {
             console.error('Error during login:', error);
             res.status(500).json({
                 success: false,
-                message: 'Internal server error'
+                message: 'Đã xảy ra lỗi trong quá trình đăng nhập. Vui lòng thử lại sau'
             });
         }
     }

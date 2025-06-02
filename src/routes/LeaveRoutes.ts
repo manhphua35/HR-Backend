@@ -75,6 +75,14 @@ router.get(
     (req, res) => leaveController.getAllLeaves(req, res)
 );
 
+// Get department leave requests - Only DEPARTMENT_HEAD can access
+router.get(
+    '/department',
+    authenticateToken,
+    checkRole([RoleType.DEPARTMENT_HEAD]),
+    (req, res) => leaveController.getDepartmentLeaves(req, res)
+);
+
 // Get leaves by specific date - All authenticated users can access (phân quyền ở service)
 router.get(
     '/by-date',

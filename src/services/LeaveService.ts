@@ -642,6 +642,54 @@ class LeaveService {
             throw error;
         }
     }
+
+    // Lấy danh sách đơn nghỉ phép của một phòng ban
+    public async getDepartmentLeaves(
+        departmentId: number,
+        filter?: GetAllLeavesFilter
+    ): Promise<Leave[]> {
+        try {
+            const queryBuilder = AppDataSource
+                .getRepository(Leave)
+                .createQueryBuilder('leave')
+                .leftJoinAndSelect('leave.user', 'user')
+                .leftJoinAndSelect('user.department', 'department')
+                .leftJoinAndSelect('leave.approver', 'approver')
+                .where('user.departmentId = :departmentId', { departmentId });
+
+            // Áp dụng các bộ lọc nếu có
+            if (filter) {
+                if (filter.startDate) {
+                    queryBuilder.andWhere('leave.startDate >= :startDate', {
+                        startDate: new Date(filter.startDate)
+                    });
+                }
+                if (filter.endDate) {
+                    queryBuilder.andWhere('leave.endDate <= :endDate', {
+                        endDate: new Date(filter.endDate)
+                    });
+                }
+                if (filter.status) {
+                    queryBuilder.andWhere('leave.status = :status', {
+                        status: filter.status
+                    });
+                }
+                if (filter.type) {
+                    queryBuilder.andWhere('leave.type = :type', {
+                        type: filter.type
+                    });
+                }
+            }
+
+            // Sắp xếp theo thời gian tạo mới nhất
+            queryBuilder.orderBy('leave.createdAt', 'DESC');
+
+            return await queryBuilder.getMany();
+        } catch (error) {
+            console.error('Error in getDepartmentLeaves:', error);
+            throw new Error('Không thể lấy danh sách nghỉ phép của phòng ban');
+        }
+    }
 }
 
 export const leaveService = LeaveService.getInstance();

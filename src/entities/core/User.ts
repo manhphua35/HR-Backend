@@ -34,6 +34,9 @@ export class User {
     @Column({ name: "description", type: "text", nullable: true })
     description!: string;
 
+    @Column({ name: "avatar", type: "text", nullable: true })
+    avatar!: string;
+
     @Column({ name: "role_id" })
     roleId!: number;
 
