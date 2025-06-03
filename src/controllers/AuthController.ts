@@ -68,9 +68,7 @@ class AuthController {
                 departmentId: user.departmentId
             };
 
-            const tokens = tokenService.generateTokens(tokenData);
-
-            res.status(200).json({
+            const tokens = tokenService.generateTokens(tokenData);            res.status(200).json({
                 success: true,
                 data: {
                     ...tokens,
@@ -79,6 +77,7 @@ class AuthController {
                         username: user.username,
                         email: user.email,
                         fullName: user.fullName,
+                        avatar: user.avatar,
                         roleType: user.role.roleType,
                         permissions: permissions,
                         departmentId: user.departmentId
