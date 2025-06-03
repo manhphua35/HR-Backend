@@ -27,78 +27,7 @@ export class AttendanceService {
         this.leaveRepository = AppDataSource.getRepository(Leave); // Initialize leave repository
     }
 
-    // Helper function to check view permissions using AuthenticatedUser
-    private async checkViewPermission(requestingUser: AuthenticatedUser, targetUserId?: number, targetDepartmentId?: number): Promise<boolean> {
-        const { userId, roleType, departmentId: reqUserDeptId } = requestingUser;
-
-        if (roleType === RoleType.SYSTEM_ADMIN || roleType === RoleType.HR_STAFF) {
-            return true; // Admin/HR can view all
-        }
-
-        if (roleType === RoleType.DEPARTMENT_HEAD) {
-            if (!reqUserDeptId) return false; // Manager must belong to a department
-
-            // Check if viewing own department or specific user within own department
-            if (targetDepartmentId && targetDepartmentId === reqUserDeptId) {
-                return true; // Can view own department data
-            }
-            if (targetUserId) {
-                // Check if the target user belongs to the manager's department
-                const targetUser = await this.userRepository.findOne({ where: { id: targetUserId, department: { id: reqUserDeptId } } });
-                return !!targetUser; // Return true if the user exists in their department
-            }
-            // Manager viewing general list - allow if filtered implicitly to their department later
-             return !targetUserId && !targetDepartmentId; // Allow if no specific target outside dept is requested
-        }
-
-        // Regular employee (EMPLOYEE)
-        if (targetUserId && targetUserId === userId) {
-            return true; // Can view own data
-        }
-        // Allow viewing own data implicitly when no filters are applied by employee
-        if (!targetUserId && !targetDepartmentId) {
-             return true; // Let the main query handle filtering by requestingUser.userId
-        }
-
-
-        return false; // Default deny
-    }
-
-     // Helper function to check edit/delete permissions using AuthenticatedUser
-    private async checkModifyPermission(requestingUser: AuthenticatedUser, attendanceRecord: Attendance): Promise<boolean> {
-        const { userId, roleType, departmentId: reqUserDeptId } = requestingUser;
-
-        if (roleType === RoleType.SYSTEM_ADMIN || roleType === RoleType.HR_STAFF) {
-            return true; // Admin/HR can modify all
-        }
-
-        // Potentially allow managers to modify records in their department?
-        if (roleType === RoleType.DEPARTMENT_HEAD) {
-             if (!reqUserDeptId) return false; // Manager must belong to a department
-             // Check if the record belongs to a user in the manager's department
-             // Need to ensure attendanceRecord.user.department is loaded or query it
-             const recordUserId = attendanceRecord.user?.id; // Use optional chaining
-             if (!recordUserId) return false; // Should not happen if relation is loaded
-
-             // Efficient check: see if user exists in the department
-             const userExistsInDept = await this.userRepository.exists({ where: { id: recordUserId, department: { id: reqUserDeptId } } });
-             return userExistsInDept; // Allow if user is in their department
-        }
-
-
-        // Allow users to modify their *own* records under certain conditions?
-        if (attendanceRecord.user?.id === userId) { // Use optional chaining
-            // Example: Allow only adding notes, not changing times after a certain period
-            // For now, let's allow full modification of own record for simplicity
-            return true;
-        }
-
-
-        return false; // Default deny
-    }
-
-
-    // Get attendances with permission checks using AuthenticatedUser
+    // Get attendance with permission checks using AuthenticatedUser
     async getAttendances(
         requestingUser: AuthenticatedUser,
         userId?: string,
@@ -379,7 +308,9 @@ export class AttendanceService {
 
         if (attendance) { // Record exists for today
             if (attendance.checkInTime) throw new Error('Bạn đã check-in hôm nay rồi.');
-
+            if (attendance.status === AttendanceStatus.LEAVE) {
+                throw new Error('Bạn đã có đơn nghỉ phép được approved cho ngày hôm nay. Vui lòng liên hệ HR để thay đổi.');
+            }
             // If record exists (e.g., from leave) but no check-in, update it
             attendance.checkInTime = now;
             // TODO: Add logic for LATE status based on expected start time
