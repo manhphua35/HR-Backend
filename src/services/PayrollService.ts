@@ -111,16 +111,50 @@ export class PayrollService {
         // Tính toán khoản khấu trừ nghỉ phép (4% lương cơ bản cho mỗi ngày vắng mặt quá phép)
         leaveDeductionAmount = chargableAbsentDays * 0.04 * baseSalaryForCalc;
 
-        // Đếm số lần đi muộn trong tháng lương
-        const lateArrivals = await this.attendanceRepo.count({
+        // Lấy chi tiết các lần đi muộn trong tháng lương
+        const lateAttendances = await this.attendanceRepo.find({
             where: {
                 user: { id: user.id },
-                date: Between(monthStartDateString, monthEndDateString), // Trong khoảng ngày của tháng lương
-                status: AttendanceStatus.LATE // Trạng thái đi muộn
-            }
+                date: Between(monthStartDateString, monthEndDateString),
+                status: AttendanceStatus.LATE
+            },
+            order: { date: 'ASC' }
         });
+        
+        const lateArrivals = lateAttendances.length;
         // Tính toán khoản phạt đi muộn (ví dụ: 100,000 cho mỗi lần đi muộn)
         latePenaltyAmount = lateArrivals * 100000;
+
+        // Kiểm tra và tạo lịch sử khấu trừ cho từng lần đi muộn chưa được ghi nhận
+        const existingHistory = existingPayroll?.updateHistory || [];
+        const newLateDeductionEntries = [];
+        
+        for (const lateAttendance of lateAttendances) {
+            // Kiểm tra xem lần đi muộn này đã được ghi nhận chưa
+            const alreadyRecorded = existingHistory.some(entry => 
+                entry.reason === 'Khấu trừ đi muộn tự động' &&
+                entry.note?.includes(`ngày ${lateAttendance.date}`)
+            );
+            
+            if (!alreadyRecorded) {
+                // Sử dụng thời gian check-in thực tế làm timestamp
+                const checkInDateTime = new Date(`${lateAttendance.date}T${lateAttendance.checkInTime}`);
+                
+                newLateDeductionEntries.push({
+                    timestamp: checkInDateTime.toISOString(),
+                    updatedBy: undefined,
+                    changes: [
+                        {
+                            field: 'latePenaltyAmount',
+                            oldValue: 0,
+                            newValue: 100000
+                        }
+                    ],
+                    reason: 'Khấu trừ đi muộn tự động',
+                    note: `Phạt đi muộn ngày ${lateAttendance.date}, check-in lúc ${lateAttendance.checkInTime}, phạt 100,000 VNĐ`
+                });
+            }
+        }
 
         // Tổng các khoản khấu trừ cuối cùng (nghỉ phép + đi muộn + các khoản khác đã giữ lại)
         const finalTotalDeduction = leaveDeductionAmount + latePenaltyAmount + otherDeductionsPreserved;
@@ -169,6 +203,12 @@ export class PayrollService {
 
         payrollToSave.tax = parseFloat(tax.toFixed(2)); // tax được tính lại
         payrollToSave.netSalary = parseFloat(netSalary.toFixed(2)); // netSalary được tính lại
+
+        // Thêm lịch sử khấu trừ đi muộn vào updateHistory nếu có bản ghi mới
+        if (newLateDeductionEntries.length > 0) {
+            const currentHistory = payrollToSave.updateHistory || [];
+            payrollToSave.updateHistory = [...currentHistory, ...newLateDeductionEntries];
+        }
         
         // Lưu hoặc cập nhật bản ghi Payroll vào cơ sở dữ liệu
         return await this.payrollRepo.save(payrollToSave);

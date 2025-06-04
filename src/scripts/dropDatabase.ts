@@ -1,7 +1,6 @@
 import { DataSource } from "typeorm";
 import { User } from "../entities/core/User";
 import { Role } from "../entities/auth/Role";
-import { Permission } from "../entities/auth/Permission";
 import { Department } from "../entities/core/Department";
 import { Leave } from "../entities/leave/Leave";
 import { Payroll } from "../entities/payroll/Payroll";
@@ -10,7 +9,6 @@ import { Attendance } from "../entities/attendance/Attendance";
 import { DepartmentReport } from "../entities/report/DepartmentReport";
 import { TrainingCourse } from "../entities/training/TrainingCourse";
 import { EditRequest } from "../entities/profile/EditRequest";
-import { RolePermission } from "../entities/auth/RolePermission";
 
 // Tạo data source mới với dropSchema: true
 const tempDataSource = new DataSource({
@@ -26,8 +24,6 @@ const tempDataSource = new DataSource({
     entities: [
         User,
         Role,
-        Permission,
-        RolePermission,
         Department,
         Leave,
         Payroll,

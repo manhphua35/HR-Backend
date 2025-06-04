@@ -31,8 +31,7 @@ interface CreateReviewData {
         score: number;
         comment: string;
     }[];
-    comments?: string;
-    improvement?: string;
+    comments?: string;    improvement?: string;
     strengths?: string;
     weaknesses?: string;
 }
@@ -125,13 +124,15 @@ class PerformanceService {
                 if (!criterion) {
                     throw new Error(`Invalid criteria ID: ${score.criteriaId}`);
                 }
-                return sum + (score.score * criterion.weight / 100);
-            }, 0);
+                return sum + (score.score * criterion.weight / 100);            }, 0);
+
+            // Đánh giá luôn được coi là đã hoàn thành khi tạo
+            const reviewStatus = ReviewStatus.APPROVED;
 
             // Create review
             const review = this.reviewRepository.create({
                 ...data,
-                status: ReviewStatus.DRAFT,
+                status: reviewStatus,
                 totalScore
             });
 
@@ -493,9 +494,7 @@ class PerformanceService {
         } catch (error) {
             throw error;
         }
-    }
-
-    public async updateReview(
+    }    public async updateReview(
         reviewId: number,
         data: {
             reviewDate: Date;
@@ -521,10 +520,8 @@ class PerformanceService {
                 throw new Error('Performance review not found');
             }
 
-            // Kiểm tra trạng thái đánh giá
-            if (review.status === ReviewStatus.APPROVED) {
-                throw new Error('Cannot modify an approved review');
-            }
+            // Cập nhật luôn được coi như đã hoàn thành
+            const reviewStatus = ReviewStatus.APPROVED;
 
             // Tính toán điểm tổng hợp
             const plan = review.plan;
@@ -545,6 +542,7 @@ class PerformanceService {
             review.strengths = data.strengths || review.strengths;
             review.weaknesses = data.weaknesses || review.weaknesses;
             review.improvement = data.improvement || review.improvement;
+            review.status = reviewStatus;
             review.totalScore = totalScore;
 
             // Lưu đánh giá

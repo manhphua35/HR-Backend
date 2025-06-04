@@ -44,12 +44,10 @@ export class User {
     hireDate!: Date;
 
     @Column({ name: "resignation_date", type: "date", nullable: true })
-    resignationDate!: Date;
-
-    @Column({ name: "remaining_leaves", default: 0 })
+    resignationDate!: Date;    @Column({ name: "remaining_leaves", default: 0 })
     remainingLeaves!: number;
 
-    @Column({ name: "base_salary", type: "decimal", precision: 10, scale: 2, default: 0 })
+    @Column({ name: "base_salary", type: "decimal", precision: 15, scale: 0, default: 0 })
     baseSalary!: number;
 
     @Column({ name: "is_active", default: true })

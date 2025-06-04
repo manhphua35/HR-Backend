@@ -505,7 +505,18 @@ class LeaveController {
 
     public async getUserLeaves(req: Request, res: Response): Promise<void> {
         try {
-            const leaves = await leaveService.getUserLeaves(req.user!.userId);
+            // Get filter parameters from query
+            const { startDate, endDate, status, type } = req.query;
+            
+            const leaves = await leaveService.getUserLeaves(
+                req.user!.userId,
+                {
+                    startDate: startDate as string,
+                    endDate: endDate as string,
+                    status: status as LeaveStatus,
+                    type: type as LeaveType
+                }
+            );
             
             res.status(200).json({
                 success: true,

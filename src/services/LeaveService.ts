@@ -546,14 +546,40 @@ class LeaveService {
         }
     }
 
-    public async getUserLeaves(userId: number): Promise<Leave[]> {
+    public async getUserLeaves(userId: number, filter?: GetAllLeavesFilter): Promise<Leave[]> {
         try {
-            return await this.leaveRepository
+            const queryBuilder = this.leaveRepository
                 .createQueryBuilder('leave')
                 .leftJoinAndSelect('leave.user', 'user')
                 .leftJoinAndSelect('leave.approver', 'approver')
                 .leftJoinAndSelect('user.department', 'department')
-                .where('leave.userId = :userId', { userId })
+                .where('leave.userId = :userId', { userId });
+
+            // Áp dụng các bộ lọc nếu có
+            if (filter) {
+                if (filter.startDate) {
+                    queryBuilder.andWhere('leave.startDate >= :startDate', {
+                        startDate: new Date(filter.startDate)
+                    });
+                }
+                if (filter.endDate) {
+                    queryBuilder.andWhere('leave.endDate <= :endDate', {
+                        endDate: new Date(filter.endDate)
+                    });
+                }
+                if (filter.status) {
+                    queryBuilder.andWhere('leave.status = :status', {
+                        status: filter.status
+                    });
+                }
+                if (filter.type) {
+                    queryBuilder.andWhere('leave.type = :type', {
+                        type: filter.type
+                    });
+                }
+            }
+
+            return await queryBuilder
                 .orderBy('leave.createdAt', 'DESC')
                 .getMany();
         } catch (error) {
